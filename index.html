@@ -1,0 +1,2240 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RadioSky</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Share+Tech+Mono&display=swap');
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html { height:100%; }
+  body { background:#020b18; font-family:'Share Tech Mono',monospace,monospace; overflow:hidden; height:100vh; width:100vw; }
+  canvas { display:block; width:100%; height:100%; }
+
+  /* Toggle */
+  #toggle-wrap {
+    position:fixed; top:20px; left:50%; transform:translateX(-50%);
+    z-index:20; display:flex; flex-direction:column; align-items:center; gap:10px;
+  }
+  #toggle-btn-row {
+    display:flex; background:rgba(2,11,24,0.92);
+    border:1px solid rgba(0,245,160,0.25); border-radius:6px; overflow:hidden;
+  }
+  .tbtn {
+    padding:10px 28px; cursor:pointer; font-family:'Share Tech Mono',monospace;
+    font-size:0.68rem; letter-spacing:0.18em; border:none; background:transparent;
+    color:rgba(0,195,245,0.5); transition:all 0.3s; white-space:nowrap;
+  }
+  .tbtn.active { background:rgba(0,245,160,0.12); color:#00f5a0; text-shadow:0 0 12px rgba(0,245,160,0.7); }
+  .tbtn:hover:not(.active) { color:rgba(0,195,245,0.8); background:rgba(0,195,245,0.05); }
+  .tdivider { width:1px; background:rgba(0,245,160,0.2); }
+
+  #scenario-title {
+    font-family:'Orbitron',sans-serif; font-weight:700;
+    font-size:clamp(0.7rem,1.8vw,1.1rem); color:#00f5a0;
+    letter-spacing:0.22em; text-align:center;
+    text-shadow:0 0 20px rgba(0,245,160,0.6);
+    opacity:0; transition:opacity 0.4s;
+    pointer-events:none;
+  }
+  #scenario-title.show { opacity:1; }
+
+  /* Flow bar */
+  #flow-bar {
+    position:fixed; bottom:0; left:0; right:0; height:48px;
+    background:rgba(2,11,24,0.94); border-top:1px solid rgba(0,245,160,0.12);
+    display:flex; align-items:center; justify-content:center;
+    z-index:10; overflow:hidden; transition:opacity 0.4s;
+  }
+  .fs { display:flex; align-items:center; gap:6px; padding:0 10px; font-size:0.58rem; letter-spacing:0.1em; color:rgba(0,195,245,0.75); white-space:nowrap; }
+  .fd { width:7px; height:7px; border-radius:50%; flex-shrink:0; animation:db 2s ease-in-out infinite; }
+  .fd.g  { background:#00f5a0; box-shadow:0 0 5px #00f5a0; }
+  .fd.y  { background:#ffcc00; box-shadow:0 0 5px #ffcc00; animation-delay:0.4s; }
+  .fd.b  { background:#00c3f5; box-shadow:0 0 5px #00c3f5; animation-delay:0.8s; }
+  .fd.r  { background:#ff6060; box-shadow:0 0 5px #ff6060; animation-delay:1.2s; }
+  @keyframes db { 0%,100%{opacity:1} 50%{opacity:0.3} }
+  .fa { color:rgba(0,245,160,0.28); font-size:0.85rem; }
+
+  /* Fade overlay for scene transition */
+  #fade {
+    position:fixed; inset:0; background:#020b18;
+    pointer-events:none; z-index:15; opacity:0; transition:opacity 0.25s;
+  }
+  #fade.on { opacity:1; }
+
+  /* Info popup */
+  #popup {
+    position:fixed; z-index:30; pointer-events:none;
+    max-width:260px; min-width:180px;
+    background:rgba(2,11,24,0.97);
+    border:1px solid rgba(0,245,160,0.4);
+    border-radius:6px; padding:14px 16px;
+    box-shadow:0 0 24px rgba(0,245,160,0.15);
+    opacity:0; transform:translateY(6px);
+    transition:opacity 0.2s, transform 0.2s;
+  }
+  #popup.visible { opacity:1; transform:translateY(0); pointer-events:auto; }
+  #popup-title {
+    font-family:'Orbitron',sans-serif; font-size:0.7rem; font-weight:700;
+    color:#00f5a0; letter-spacing:0.18em; margin-bottom:8px;
+    text-shadow:0 0 10px rgba(0,245,160,0.5);
+  }
+  #popup-body {
+    font-size:0.62rem; line-height:1.6; color:rgba(180,220,255,0.85);
+    letter-spacing:0.04em;
+  }
+  #popup-close {
+    position:absolute; top:8px; right:10px;
+    font-size:0.75rem; color:rgba(0,245,160,0.5); cursor:pointer;
+    pointer-events:auto; line-height:1;
+  }
+  #popup-close:hover { color:#00f5a0; }
+
+  /* Hint */
+  #click-hint {
+    position:fixed; bottom:60px; left:50%; transform:translateX(-50%);
+    font-size:0.55rem; letter-spacing:0.2em; color:rgba(0,195,245,0.35);
+    pointer-events:none; z-index:10; animation:hintFade 3s ease-in-out forwards;
+  }
+  @keyframes hintFade { 0%{opacity:0} 20%{opacity:1} 70%{opacity:1} 100%{opacity:0} }
+</style>
+</head>
+<body>
+<canvas id="scene"></canvas>
+<div id="fade"></div>
+
+<div id="popup">
+  <div id="popup-close" onclick="closePopup()">✕</div>
+  <div id="popup-title"></div>
+  <div id="popup-body"></div>
+</div>
+<div id="click-hint">CLICK ON ANYTHING TO LEARN MORE</div>
+
+<div id="toggle-wrap">
+  <div id="toggle-btn-row">
+    <button class="tbtn active" id="btn1" onclick="setScenario(1)">① LOCAL PLAYOUT</button>
+    <div class="tdivider"></div>
+    <button class="tbtn" id="btn2" onclick="setScenario(2)">② NETWORKED STATION</button>
+    <div class="tdivider"></div>
+    <button class="tbtn" id="btn3" onclick="setScenario(3)">③ TIELINE CODEC — NRL</button>
+    <div class="tdivider"></div>
+    <button class="tbtn" id="btn4" onclick="setScenario(4)">④ ISDN — STUDIO TO STUDIO</button>
+    <div class="tdivider"></div>
+    <button class="tbtn" id="btn5" onclick="setScenario(5)">⑤ DVN — LIVE GAME VISION</button>
+    <div class="tdivider"></div>
+    <button class="tbtn" id="btn6" onclick="setScenario(6)">⑥ DAB+ DIGITAL RADIO</button>
+  </div>
+  <div id="scenario-title" class="show"></div>
+</div>
+
+<div id="flow-bar"></div>
+
+<script>
+// ── POLYFILL: ctx.roundRect (not supported in older browsers) ─────────────────
+if(!CanvasRenderingContext2D.prototype.roundRect){
+  CanvasRenderingContext2D.prototype.roundRect=function(x,y,w,h,r){
+    if(typeof r==='object') r=r[0]||0;
+    r=Math.min(r,w/2,h/2);
+    this.moveTo(x+r,y);
+    this.lineTo(x+w-r,y);
+    this.quadraticCurveTo(x+w,y,x+w,y+r);
+    this.lineTo(x+w,y+h-r);
+    this.quadraticCurveTo(x+w,y+h,x+w-r,y+h);
+    this.lineTo(x+r,y+h);
+    this.quadraticCurveTo(x,y+h,x,y+h-r);
+    this.lineTo(x,y+r);
+    this.quadraticCurveTo(x,y,x+r,y);
+    this.closePath();
+    return this;
+  };
+}
+
+const canvas=document.getElementById('scene');
+const ctx=canvas.getContext('2d');
+let W,H;
+function resize(){W=canvas.width=window.innerWidth;H=canvas.height=window.innerHeight;}
+resize(); window.addEventListener('resize',resize);
+
+let t=0, scenario=1, transitioning=false;
+
+// ── HELPERS ──────────────────────────────────────────────────────────────────
+
+const stars=Array.from({length:200},()=>({x:Math.random(),y:Math.random()*0.64,r:Math.random()*1.4+0.3,b:Math.random(),s:Math.random()*0.4+0.2}));
+const pkts=[];
+function spawnPkt(fx,fy,tx,ty,c,delay=0){pkts.push({fx,fy,tx,ty,c,p:-delay,s:0.0028+Math.random()*0.003});}
+function clearPkts(){pkts.length=0;}
+
+function sky(){
+  const g=ctx.createLinearGradient(0,0,0,H*0.74);
+  g.addColorStop(0,'#010810');g.addColorStop(0.35,'#071525');g.addColorStop(0.65,'#0d2340');g.addColorStop(1,'#0c2818');
+  ctx.fillStyle=g;ctx.fillRect(0,0,W,H);
+}
+function gnd(){
+  const gy=H*0.74;
+  const g=ctx.createLinearGradient(0,gy,0,H);
+  g.addColorStop(0,'#0a1a06');g.addColorStop(0.3,'#0e2209');g.addColorStop(1,'#060f04');
+  ctx.fillStyle=g;ctx.fillRect(0,gy,W,H-gy);
+  const gl=ctx.createLinearGradient(0,gy-8,0,gy+50);
+  gl.addColorStop(0,'rgba(0,245,160,0.05)');gl.addColorStop(1,'rgba(0,0,0,0)');
+  ctx.fillStyle=gl;ctx.fillRect(0,gy-8,W,58);
+}
+function drawStars(){
+  stars.forEach(s=>{
+    const f=0.5+0.5*Math.sin(t*s.s+s.b*9);
+    ctx.beginPath();ctx.arc(s.x*W,s.y*H,s.r,0,Math.PI*2);
+    ctx.fillStyle=`rgba(200,220,255,${0.35+0.5*f})`;ctx.fill();
+  });
+}
+function moon(mx,my,r){
+  ctx.save();
+  const mg=ctx.createRadialGradient(mx-r*0.25,my-r*0.25,r*0.1,mx,my,r);
+  mg.addColorStop(0,'#d0e0f0');mg.addColorStop(0.7,'#a0b8cc');mg.addColorStop(1,'#708090');
+  ctx.fillStyle=mg;ctx.shadowColor='rgba(200,220,255,0.22)';ctx.shadowBlur=16;
+  ctx.beginPath();ctx.arc(mx,my,r,0,Math.PI*2);ctx.fill();ctx.shadowBlur=0;ctx.restore();
+}
+
+// Building
+function building(cx,gy,floors,w,lit=true){
+  const bh=floors*17,bx=cx-w/2,by=gy-bh;
+  const bg=ctx.createLinearGradient(bx,by,bx+w,by);
+  bg.addColorStop(0,'#1e3550');bg.addColorStop(0.5,'#142030');bg.addColorStop(1,'#1e3550');
+  ctx.fillStyle=bg;ctx.fillRect(bx,by,w,bh);
+  ctx.fillStyle='#1a3355';ctx.fillRect(bx-3,by,w+6,5);
+  const cols=Math.floor(w/20);
+  for(let r=0;r<floors-1;r++)for(let c=0;c<cols;c++){
+    const wx=bx+6+c*20,wy=by+8+r*17;
+    ctx.fillStyle=lit&&Math.sin(r*3.7+c*2.3+t*0.15)>0?'rgba(240,200,70,0.85)':'rgba(20,45,80,0.5)';
+    ctx.fillRect(wx,wy,11,9);
+  }
+  ctx.fillStyle='rgba(0,0,0,0.22)';ctx.fillRect(bx+w-7,by,7,bh);
+  return{bx,by,bw:w,bh,topY:by};
+}
+
+// Radio/Broadcast tower (tall lattice mast)
+function mast(cx,baseY,h,color='#3a5a7a'){
+  ctx.strokeStyle=color;ctx.lineWidth=2;
+  const sections=7, sh=h/sections;
+  for(let i=0;i<sections;i++){
+    const y=baseY-i*sh, sp=(sections-i)*3;
+    ctx.beginPath();ctx.moveTo(cx-sp,y);ctx.lineTo(cx+sp,y-sh);ctx.stroke();
+    ctx.beginPath();ctx.moveTo(cx+sp,y);ctx.lineTo(cx-sp,y-sh);ctx.stroke();
+    ctx.strokeStyle='#2a4060';ctx.beginPath();ctx.moveTo(cx-sp,y);ctx.lineTo(cx+sp,y);ctx.stroke();
+    ctx.strokeStyle=color;
+  }
+  ctx.beginPath();ctx.moveTo(cx,baseY);ctx.lineTo(cx,baseY-h);ctx.stroke();
+  const g=0.5+0.5*Math.sin(t*2.2);
+  ctx.beginPath();ctx.arc(cx,baseY-h,3.5,0,Math.PI*2);
+  ctx.fillStyle=`rgba(255,60,60,${0.7+0.3*g})`;ctx.shadowColor='red';ctx.shadowBlur=8*g;ctx.fill();ctx.shadowBlur=0;
+}
+
+// Hill transmitter mast (on a hill shape)
+function hillMast(cx,gy){
+  // Hill
+  ctx.fillStyle='#0e2209';
+  ctx.beginPath();ctx.ellipse(cx,gy+5,90,40,0,Math.PI,0);ctx.fill();
+  ctx.fillStyle='#112b0b';
+  ctx.beginPath();ctx.ellipse(cx,gy+2,70,28,0,Math.PI,0);ctx.fill();
+  // Mast on hill top
+  const hillTopY=gy-34;
+  mast(cx,hillTopY,95,'#4a6a8a');
+  // STL dish on mast base
+  ctx.save();ctx.translate(cx+8,hillTopY-10);ctx.rotate(-Math.PI*0.2);
+  ctx.strokeStyle='#8ab0c0';ctx.lineWidth=2;
+  ctx.beginPath();ctx.arc(0,0,12,Math.PI*0.1,Math.PI*0.9);ctx.stroke();
+  ctx.beginPath();ctx.moveTo(Math.cos(Math.PI*0.1)*12,Math.sin(Math.PI*0.1)*12);
+  ctx.lineTo(Math.cos(Math.PI*0.9)*12,Math.sin(Math.PI*0.9)*12);ctx.stroke();
+  const gf=0.5+0.5*Math.sin(t*3+0.5);
+  ctx.beginPath();ctx.arc(Math.cos(Math.PI*0.5)*8,Math.sin(Math.PI*0.5)*8,3,0,Math.PI*2);
+  ctx.fillStyle='#00f5a0';ctx.shadowColor='#00f5a0';ctx.shadowBlur=6*gf;ctx.fill();ctx.shadowBlur=0;
+  ctx.restore();
+  return{topX:cx,topY:hillTopY-95};
+}
+
+// STL microwave link dish (small, on building roof)
+function stlDish(cx,roofY,facingRight=true){
+  const dir=facingRight?1:-1;
+  ctx.save();ctx.translate(cx,roofY-8);
+  ctx.strokeStyle='#90b0c0';ctx.lineWidth=2;
+  ctx.beginPath();ctx.moveTo(0,0);ctx.lineTo(0,-14);ctx.stroke();
+  ctx.translate(0,-14);ctx.rotate(dir*Math.PI*0.12);
+  ctx.fillStyle='rgba(0,195,245,0.1)';ctx.strokeStyle='#90b0c0';
+  ctx.beginPath();ctx.arc(0,0,11,dir*Math.PI*0.15,dir*Math.PI*0.85);ctx.fill();ctx.stroke();
+  ctx.beginPath();ctx.moveTo(Math.cos(dir*Math.PI*0.15)*11,Math.sin(dir*Math.PI*0.15)*11);
+  ctx.lineTo(Math.cos(dir*Math.PI*0.85)*11,Math.sin(dir*Math.PI*0.85)*11);ctx.stroke();
+  const g=0.5+0.5*Math.sin(t*3.2);
+  const fx=Math.cos(dir*Math.PI*0.5)*7.5,fy=Math.sin(dir*Math.PI*0.5)*7.5;
+  ctx.beginPath();ctx.arc(fx,fy,3,0,Math.PI*2);
+  ctx.fillStyle='#00c3f5';ctx.shadowColor='#00c3f5';ctx.shadowBlur=6*g;ctx.fill();ctx.shadowBlur=0;
+  ctx.restore();
+}
+
+// Uplink satellite dish (large, ground mounted)
+function uplinkDish(cx,baseY,sc=1){
+  ctx.save();ctx.translate(cx,baseY);
+  ctx.fillStyle='#192819';ctx.fillRect(-14*sc,-2*sc,28*sc,5*sc);
+  ctx.strokeStyle='#506070';ctx.lineWidth=4*sc;
+  ctx.beginPath();ctx.moveTo(0,0);ctx.lineTo(0,-26*sc);ctx.stroke();
+  ctx.save();ctx.translate(0,-26*sc);ctx.rotate(-Math.PI*0.3);
+  const dw=48*sc;
+  const pts=[];
+  for(let x=-dw;x<=dw;x+=2)pts.push([x,-(x*x)/(dw*1.7)]);
+  ctx.strokeStyle='#8ab0d0';ctx.lineWidth=2*sc;ctx.fillStyle='rgba(0,180,255,0.07)';
+  ctx.beginPath();ctx.moveTo(pts[0][0],pts[0][1]);pts.forEach(p=>ctx.lineTo(p[0],p[1]));
+  ctx.lineTo(dw,-dw*0.35);ctx.closePath();ctx.fill();
+  ctx.beginPath();ctx.moveTo(pts[0][0],pts[0][1]);pts.forEach(p=>ctx.lineTo(p[0],p[1]));ctx.stroke();
+  ctx.beginPath();ctx.moveTo(-dw,pts[0][1]);ctx.lineTo(dw,pts[pts.length-1][1]);ctx.stroke();
+  ctx.strokeStyle='#607080';ctx.lineWidth=1.2*sc;
+  [0.35,0.7,0.92].forEach(r=>{
+    ctx.beginPath();ctx.moveTo(0,-dw*0.04);ctx.lineTo(dw*r,pts[Math.floor(pts.length*(0.5+r*0.37))][1]);ctx.stroke();
+    ctx.beginPath();ctx.moveTo(0,-dw*0.04);ctx.lineTo(-dw*r,pts[Math.floor(pts.length*(0.5-r*0.37))][1]);ctx.stroke();
+  });
+  const gl=0.5+0.5*Math.sin(t*3.5);
+  ctx.beginPath();ctx.arc(0,-dw*0.04,5*sc,0,Math.PI*2);
+  ctx.fillStyle='#ffcc00';ctx.shadowColor='#ffcc00';ctx.shadowBlur=10*gl*sc;ctx.fill();ctx.shadowBlur=0;
+  ctx.restore();ctx.restore();
+}
+
+// Downlink receive dish on building roof
+function recvDish(cx,roofY,sc=1){
+  ctx.save();ctx.translate(cx,roofY);
+  ctx.strokeStyle='#607070';ctx.lineWidth=2.5*sc;
+  ctx.beginPath();ctx.moveTo(0,0);ctx.lineTo(0,-18*sc);ctx.stroke();
+  ctx.translate(0,-18*sc);ctx.rotate(-Math.PI*0.25);
+  const dw=28*sc;
+  const pts=[];
+  for(let x=-dw;x<=dw;x+=2)pts.push([x,-(x*x)/(dw*1.6)]);
+  ctx.fillStyle='rgba(0,195,245,0.1)';ctx.strokeStyle='#6090a0';ctx.lineWidth=2*sc;
+  ctx.beginPath();ctx.moveTo(pts[0][0],pts[0][1]);pts.forEach(p=>ctx.lineTo(p[0],p[1]));
+  ctx.lineTo(dw,-dw*0.35);ctx.closePath();ctx.fill();
+  ctx.beginPath();ctx.moveTo(pts[0][0],pts[0][1]);pts.forEach(p=>ctx.lineTo(p[0],p[1]));ctx.stroke();
+  ctx.beginPath();ctx.moveTo(-dw,pts[0][1]);ctx.lineTo(dw,pts[pts.length-1][1]);ctx.stroke();
+  const gl=0.5+0.5*Math.sin(t*3+1);
+  ctx.beginPath();ctx.arc(0,-dw*0.04,4*sc,0,Math.PI*2);
+  ctx.fillStyle='#00c3f5';ctx.shadowColor='#00c3f5';ctx.shadowBlur=8*gl*sc;ctx.fill();ctx.shadowBlur=0;
+  ctx.restore();
+}
+
+// Satellite in space
+function satellite(sx,sy){
+  ctx.save();ctx.translate(sx,sy);ctx.rotate(t*0.2);
+  const pw=55,ph=12;
+  const pg=ctx.createLinearGradient(-pw-12,0,pw+12,0);
+  pg.addColorStop(0,'#0a3060');pg.addColorStop(0.3,'#1060c0');pg.addColorStop(0.5,'#2090ff');pg.addColorStop(0.7,'#1060c0');pg.addColorStop(1,'#0a3060');
+  [-1,1].forEach(sd=>{
+    ctx.fillStyle=pg;ctx.fillRect(sd*12,-ph/2,sd*pw,ph);
+    ctx.strokeStyle='rgba(100,180,255,0.38)';ctx.lineWidth=0.5;
+    for(let i=1;i<5;i++){ctx.beginPath();ctx.moveTo(sd*(12+pw*i/5),-ph/2);ctx.lineTo(sd*(12+pw*i/5),ph/2);ctx.stroke();}
+    ctx.beginPath();ctx.moveTo(sd*12,0);ctx.lineTo(sd*(12+pw),0);ctx.stroke();
+  });
+  ctx.strokeStyle='#4080a0';ctx.lineWidth=2;
+  ctx.beginPath();ctx.moveTo(-12,0);ctx.lineTo(-pw-12,0);ctx.stroke();
+  ctx.beginPath();ctx.moveTo(12,0);ctx.lineTo(pw+12,0);ctx.stroke();
+  const bg=ctx.createLinearGradient(-12,-14,12,14);
+  bg.addColorStop(0,'#2a4a6a');bg.addColorStop(0.4,'#3a6080');bg.addColorStop(1,'#1a3040');
+  ctx.fillStyle=bg;ctx.strokeStyle='#4090c0';ctx.lineWidth=1.5;
+  ctx.beginPath();ctx.roundRect(-12,-14,24,28,3);ctx.fill();ctx.stroke();
+  ctx.fillStyle='rgba(100,200,255,0.25)';
+  ctx.fillRect(-7,-10,14,4);ctx.fillRect(-7,-3,14,4);ctx.fillRect(-7,4,14,4);
+  ctx.strokeStyle='#00c3f5';ctx.lineWidth=1.3;
+  ctx.beginPath();ctx.moveTo(0,14);ctx.lineTo(0,22);ctx.stroke();
+  ctx.beginPath();ctx.ellipse(0,22,9,3.5,0,0,Math.PI*2);
+  ctx.fillStyle='rgba(0,195,245,0.15)';ctx.fill();ctx.stroke();
+  [[8,-10,'#ffcc00'],[-8,-10,'#00f5a0']].forEach(([x,y,c])=>{
+    const g=0.5+0.5*Math.sin(t*4+(x>0?0:1.5));
+    ctx.beginPath();ctx.arc(x,y,2.2,0,Math.PI*2);
+    ctx.fillStyle=c;ctx.shadowColor=c;ctx.shadowBlur=5*g;ctx.fill();ctx.shadowBlur=0;
+  });
+  ctx.restore();
+}
+
+// Animated beam
+function beam(x1,y1,x2,y2,c1,c2,a,w=1.8){
+  const g=ctx.createLinearGradient(x1,y1,x2,y2);
+  const ca=(c,al)=>c.replace('rgb(','rgba(').replace(')',`,${al})`);
+  g.addColorStop(0,ca(c1,a));g.addColorStop(0.5,ca(c2,a*0.3));g.addColorStop(1,ca(c1,a));
+  ctx.save();ctx.strokeStyle=g;ctx.lineWidth=w;
+  ctx.setLineDash([9,7]);ctx.lineDashOffset=-t*22;ctx.globalAlpha=a;
+  ctx.beginPath();ctx.moveTo(x1,y1);ctx.lineTo(x2,y2);ctx.stroke();
+  ctx.setLineDash([]);ctx.globalAlpha=1;ctx.restore();
+}
+
+// Broadcast cone
+function cone(sx,sy,rx,ry,rgb,a){
+  const spread=70,dx=rx-sx,dy=ry-sy,len=Math.sqrt(dx*dx+dy*dy);
+  const nx=-dy/len,ny=dx/len;
+  ctx.save();
+  const g=ctx.createLinearGradient(sx,sy,rx,ry);
+  g.addColorStop(0,`rgba(${rgb},0)`);g.addColorStop(0.8,`rgba(${rgb},${a*0.05})`);g.addColorStop(1,`rgba(${rgb},${a*0.18})`);
+  ctx.fillStyle=g;ctx.beginPath();ctx.moveTo(sx,sy);
+  ctx.lineTo(rx+nx*spread,ry+ny*spread);ctx.lineTo(rx-nx*spread,ry-ny*spread);
+  ctx.closePath();ctx.fill();ctx.restore();
+}
+
+// Signal rings
+function rings(cx,cy,color,sc=1){
+  for(let i=0;i<3;i++){
+    const ph=(t*1.5+i*0.4)%1,r=ph*42*sc,a=(1-ph)*0.45;
+    ctx.beginPath();ctx.arc(cx,cy,r,0,Math.PI*2);
+    ctx.strokeStyle=color;ctx.globalAlpha=a;ctx.lineWidth=1.5;ctx.stroke();ctx.globalAlpha=1;
+  }
+}
+
+// Ground cable / STL fibre
+function groundLink(x1,y,x2,color,label=''){
+  ctx.save();
+  ctx.strokeStyle=color;ctx.lineWidth=2;
+  ctx.setLineDash([10,6]);ctx.lineDashOffset=-(t*25)%30;
+  ctx.beginPath();ctx.moveTo(x1,y);ctx.lineTo(x2,y);ctx.stroke();
+  ctx.setLineDash([]);
+  // Underground indicator
+  ctx.strokeStyle=color.replace(/[\d.]+\)$/,'0.3)');ctx.lineWidth=6;
+  ctx.beginPath();ctx.moveTo(x1,y+8);ctx.lineTo(x2,y+8);ctx.stroke();
+  if(label){
+    ctx.font='0.44rem "Share Tech Mono"';ctx.fillStyle=color;ctx.textAlign='center';
+    ctx.globalAlpha=0.55;ctx.fillText(label,(x1+x2)/2,y-12);ctx.globalAlpha=1;
+  }
+  ctx.restore();
+}
+
+// Car with person inside
+function carWithPerson(cx,gy){
+  ctx.save();ctx.translate(cx,gy);
+  // Body
+  ctx.fillStyle='#1a3040';ctx.fillRect(-22,-8,44,8);
+  // Roof
+  ctx.beginPath();ctx.moveTo(-18,-8);ctx.lineTo(-14,-16);ctx.lineTo(10,-16);ctx.lineTo(15,-8);ctx.closePath();ctx.fill();
+  // Windows
+  ctx.fillStyle='rgba(100,200,255,0.18)';ctx.fillRect(-12,-15,10,6);ctx.fillRect(1,-15,11,6);
+  // Person silhouette in left window
+  ctx.fillStyle='rgba(200,220,255,0.55)';
+  ctx.beginPath();ctx.arc(-5,-12,3.5,0,Math.PI*2);ctx.fill(); // head
+  ctx.fillRect(-7.5,-10,5,4); // body
+  // Headlights
+  const hl=0.7+0.3*Math.sin(t*10);
+  ctx.beginPath();ctx.arc(21,-4,3,0,Math.PI*2);
+  ctx.fillStyle=`rgba(255,240,150,${hl})`;ctx.shadowColor='rgba(255,240,100,0.8)';ctx.shadowBlur=10;ctx.fill();ctx.shadowBlur=0;
+  // Antenna
+  ctx.strokeStyle='#506070';ctx.lineWidth=1.5;ctx.beginPath();ctx.moveTo(-14,-16);ctx.lineTo(-14,-28);ctx.stroke();
+  ctx.restore();
+}
+
+// House
+function house(cx,gy){
+  const bw=50,bh=36,bx=cx-bw/2,by=gy-bh;
+  ctx.fillStyle='#142030';ctx.fillRect(bx,by,bw,bh);
+  ctx.fillStyle='#0e1a28';ctx.beginPath();ctx.moveTo(cx-27,by);ctx.lineTo(cx,by-21);ctx.lineTo(cx+27,by);ctx.closePath();ctx.fill();
+  ctx.fillStyle='#1a3550';ctx.fillRect(cx-5,by+19,10,bh-19);
+  const wl=0.5+0.5*Math.sin(t*0.3+2);
+  ctx.fillStyle=`rgba(240,200,60,${0.55+0.4*wl})`;
+  ctx.fillRect(bx+5,by+6,12,10);ctx.fillRect(bx+33,by+6,12,10);
+}
+
+// Car
+function car(cx,gy){
+  ctx.save();ctx.translate(cx,gy);
+  ctx.fillStyle='#1a3040';ctx.fillRect(-22,-8,44,8);
+  ctx.beginPath();ctx.moveTo(-18,-8);ctx.lineTo(-14,-16);ctx.lineTo(10,-16);ctx.lineTo(15,-8);ctx.closePath();ctx.fill();
+  ctx.fillStyle='rgba(100,200,255,0.18)';ctx.fillRect(-12,-15,10,6);ctx.fillRect(1,-15,11,6);
+  const hl=0.7+0.3*Math.sin(t*10);
+  ctx.beginPath();ctx.arc(21,-4,3,0,Math.PI*2);
+  ctx.fillStyle=`rgba(255,240,150,${hl})`;ctx.shadowColor='rgba(255,240,100,0.8)';ctx.shadowBlur=10;ctx.fill();ctx.shadowBlur=0;
+  // antenna
+  ctx.strokeStyle='#506070';ctx.lineWidth=1.5;ctx.beginPath();ctx.moveTo(-14,-16);ctx.lineTo(-14,-28);ctx.stroke();
+  ctx.restore();
+}
+
+// Label
+function label(x,y,main,sub,mc,sc2){
+  ctx.textAlign='center';
+  ctx.font='bold 0.58rem "Share Tech Mono"';ctx.fillStyle=mc;ctx.fillText(main,x,y);
+  if(sub){ctx.font='0.48rem "Share Tech Mono"';ctx.fillStyle=sc2||'rgba(0,195,245,0.42)';ctx.fillText(sub,x,y+12);}
+}
+
+// FM broadcast waves from mast top
+function fmWaves(cx,ty){
+  for(let i=0;i<4;i++){
+    const ph=(t*1.2+i*0.3)%1;
+    const r=ph*55;
+    const a=(1-ph)*0.5;
+    ctx.strokeStyle='rgba(0,245,160,0.8)';ctx.lineWidth=1.5;
+    ctx.globalAlpha=a;
+    // Half circle waves spreading out
+    ctx.beginPath();ctx.arc(cx,ty,r,-Math.PI*0.7,Math.PI*0.7);ctx.stroke();
+    ctx.beginPath();ctx.arc(cx,ty,r,Math.PI*0.3,Math.PI*1.7);ctx.stroke();
+    ctx.globalAlpha=1;
+  }
+}
+
+// ── SCENARIO RENDERING ───────────────────────────────────────────────────────
+
+function drawScenario1(){
+  const gy=H*0.74;
+
+  // --- STUDIO (left) ---
+  const stuX=W*0.15;
+  const stu=building(stuX,gy,5,90);
+  stlDish(stuX+28,stu.topY,true);
+  label(stuX,gy+18,'RADIO STUDIO','LOCAL PRODUCTION','rgba(0,245,160,0.88)','rgba(0,195,245,0.45)');
+
+  // --- STL LINK (studio → transmitter) ---
+  const stlY=stu.topY+14;
+  groundLink(stuX+40,gy-8,W*0.55-20,'rgba(0,245,160,0.55)','STL — STUDIO TRANSMITTER LINK');
+
+  // STL microwave hops label
+  ctx.textAlign='center';ctx.font='0.44rem "Share Tech Mono"';
+  ctx.fillStyle='rgba(0,245,160,0.38)';
+  ctx.fillText('(FIBRE OR MICROWAVE)',(stuX+W*0.55)*0.5,gy-22);
+
+  // Animated STL beam (ground level)
+  beam(stuX+44,gy-20,W*0.55-24,gy-20,'rgb(0,245,160)','rgb(0,195,245)',0.4,1.5);
+
+  // Packets on STL
+  if(Math.random()<0.05)spawnPkt(stuX+44,gy-20,W*0.55-24,gy-20,'#00f5a0');
+
+  // --- HILL TRANSMITTER MAST (center-right) ---
+  const mastX=W*0.58;
+  const hillTop=hillMast(mastX,gy);
+
+  label(mastX,gy+22,'TX MAST','HIGH GROUND SITE','rgba(0,245,160,0.75)','rgba(0,195,245,0.38)');
+
+  // FM waves from mast top
+  fmWaves(hillTop.topX, hillTop.topY);
+
+  // --- LISTENER: CAR (right) ---
+  const cX=W*0.84;
+
+  // Road
+  ctx.fillStyle='rgba(25,45,25,0.5)';ctx.fillRect(W*0.68,gy+2,W*0.34,14);
+  ctx.strokeStyle='rgba(255,255,80,0.15)';ctx.lineWidth=1.5;
+  ctx.setLineDash([14,10]);ctx.lineDashOffset=-t*18;
+  ctx.beginPath();ctx.moveTo(W*0.70,gy+9);ctx.lineTo(W,gy+9);ctx.stroke();
+  ctx.setLineDash([]);
+
+  carWithPerson(cX,gy+5);
+
+  // FM reception beam (mast → car)
+  const beamAmt=0.3+0.12*Math.sin(t*1.3);
+  beam(hillTop.topX,hillTop.topY+5,cX-14,gy-28,'rgb(0,245,160)','rgb(0,245,160)',beamAmt,1.5);
+  cone(hillTop.topX,hillTop.topY,cX,gy,'0,245,160',beamAmt);
+
+  // receive rings on car antenna
+  for(let i=0;i<3;i++){
+    const ph=(t*2.2+i*0.35)%1;
+    ctx.globalAlpha=(1-ph)*0.5;ctx.strokeStyle='rgba(0,245,160,0.8)';ctx.lineWidth=1.5;
+    ctx.beginPath();ctx.arc(cX-14,gy-28,ph*12,0,Math.PI*2);ctx.stroke();ctx.globalAlpha=1;
+  }
+
+  // Music notes floating from car
+  const np=0.5+0.5*Math.sin(t*2.5);
+  ctx.font=`${14+np*3}px serif`;ctx.fillStyle=`rgba(0,245,160,${0.5+0.4*np})`;
+  ctx.textAlign='center';ctx.fillText('♪',cX+10,gy-26);
+  ctx.font=`${11+np*2}px serif`;ctx.fillStyle=`rgba(0,245,160,${0.35+0.3*np})`;
+  ctx.fillText('♫',cX+24,gy-38);
+
+  label(cX,gy+20,'LISTENER','HEARS IT IN THE CAR','rgba(0,245,160,0.85)','rgba(0,195,245,0.45)');
+
+  // Packets: studio→mast
+  pkts.forEach((p,i)=>{
+    if(p.p<0){p.p+=p.s;return;}
+    p.p+=p.s;if(p.p>1){pkts.splice(i,1);return;}
+    const px=p.fx+(p.tx-p.fx)*p.p,py=p.fy+(p.ty-p.fy)*p.p;
+    ctx.beginPath();ctx.arc(px,py,2.8,0,Math.PI*2);
+    ctx.fillStyle=p.c;ctx.shadowColor=p.c;ctx.shadowBlur=7;ctx.fill();ctx.shadowBlur=0;
+  });
+}
+
+function drawScenario2(){
+  const gy=H*0.74;
+  const satX=W*0.5, satY=H*0.13;
+
+  // --- NETWORK HQ (far left) ---
+  const hqX=W*0.08;
+  const hq=building(hqX,gy,7,85);
+  mast(hqX+30,hq.topY,50);
+  label(hqX,gy+18,'NETWORK HQ','CONTENT ORIGIN','rgba(0,245,160,0.88)','rgba(0,195,245,0.45)');
+
+  // HQ → Uplink fibre
+  const upX=W*0.3;
+  groundLink(hqX+44,gy-5,upX-85,'rgba(255,200,0,0.55)','CONTRIBUTION LINK (FIBRE)');
+
+  // --- UPLINK FACILITY ---
+  building(upX,gy,4,90);
+  uplinkDish(upX-60,gy,0.7);
+  uplinkDish(upX+48,gy,0.78);
+  uplinkDish(upX-8,gy,0.95);
+  label(upX,gy+18,'UPLINK FACILITY','TRANSMISSION SITE','rgba(255,200,0,0.9)','rgba(255,180,0,0.45)');
+
+  // Uplink beam
+  const dfY=gy-92;
+  const uA=0.3+0.12*Math.sin(t*1.2);
+  beam(upX-8,dfY,satX,satY+15,'rgb(255,200,0)','rgb(0,195,245)',uA);
+  cone(upX-8,dfY,satX,satY,'255,200,0',uA*0.8);
+  rings(upX-8,dfY,'rgba(255,200,0,0.65)',0.62);
+
+  // Uplink packets
+  if(Math.random()<0.04)spawnPkt(upX-8,dfY,satX,satY,'#ffcc00');
+
+  // --- SATELLITE ---
+  satellite(satX,satY);
+  ctx.textAlign='center';
+  ctx.font='bold 0.5rem "Share Tech Mono"';ctx.fillStyle='rgba(100,200,255,0.75)';
+  ctx.fillText('GEOSTATIONARY SATELLITE',satX,satY-42);
+  ctx.font='0.44rem "Share Tech Mono"';ctx.fillStyle='rgba(100,200,255,0.35)';
+  ctx.fillText('35,786 KM',satX,satY-30);
+
+  // --- LOCAL STATION (receives downlink, re-broadcasts) ---
+  const locX=W*0.72;
+  const loc=building(locX,gy,5,92);
+  recvDish(locX-38,loc.topY,0.85);
+  stlDish(locX+30,loc.topY,true);
+  label(locX,gy+18,'LOCAL STATION','INSERTS LOCAL ADS / NEWS','rgba(0,195,245,0.88)','rgba(0,195,245,0.42)');
+
+  // Downlink: satellite → local station
+  const dA=0.3+0.12*Math.sin(t*1.4+1);
+  beam(satX,satY+18,locX-38,loc.topY-22,'rgb(0,195,245)','rgb(100,240,255)',dA);
+  rings(locX-38,loc.topY-22,'rgba(0,195,245,0.65)',0.48);
+  if(Math.random()<0.038)spawnPkt(satX,satY+18,locX-38,loc.topY-14,'#00c3f5');
+
+  // STL: local station → hill mast
+  const mastX=W*0.89;
+  beam(locX+34,loc.topY-12,mastX,gy-74,'rgb(0,245,160)','rgb(0,245,160)',0.35,1.5);
+  groundLink(locX+44,gy-5,mastX-5,'rgba(0,245,160,0.45)','STL');
+  if(Math.random()<0.04)spawnPkt(locX+34,loc.topY-12,mastX,gy-82,'#00f5a0');
+
+  // --- HILL TX MAST (right) ---
+  const hillTop=hillMast(mastX,gy);
+  label(mastX,gy+22,'TX MAST','LOCAL TRANSMITTER','rgba(0,245,160,0.7)','rgba(0,195,245,0.35)');
+  fmWaves(hillTop.topX,hillTop.topY);
+
+  // Road
+  ctx.fillStyle='rgba(25,45,25,0.4)';ctx.fillRect(W*0.93,gy+2,W*0.1,14);
+
+  // Listener (car, space is tight)
+  carWithPerson(W*0.96,gy+5);
+  for(let i=0;i<3;i++){
+    const ph=(t*2.2+i*0.35)%1;
+    ctx.globalAlpha=(1-ph)*0.4;ctx.strokeStyle='rgba(0,245,160,0.7)';ctx.lineWidth=1.5;
+    ctx.beginPath();ctx.arc(W*0.96-14,gy-28,ph*10,0,Math.PI*2);ctx.stroke();ctx.globalAlpha=1;
+  }
+  label(W*0.96,gy+20,'LISTENER','FM RECEIVER','rgba(0,245,160,0.75)','rgba(0,195,245,0.35)');
+
+  // All packets
+  pkts.forEach((p,i)=>{
+    if(p.p<0){p.p+=p.s;return;}
+    p.p+=p.s;if(p.p>1){pkts.splice(i,1);return;}
+    const px=p.fx+(p.tx-p.fx)*p.p,py=p.fy+(p.ty-p.fy)*p.p;
+    ctx.beginPath();ctx.arc(px,py,2.8,0,Math.PI*2);
+    ctx.fillStyle=p.c;ctx.shadowColor=p.c;ctx.shadowBlur=7;ctx.fill();ctx.shadowBlur=0;
+  });
+
+  // HQ → Uplink packets
+  if(Math.random()<0.04)spawnPkt(hqX+44,gy-18,upX-88,gy-18,'#ffcc00');
+}
+
+// ── SCENARIO 3: TIELINE CODEC / NRL SIDELINE ─────────────────────────────────
+
+function drawScenario3(){
+  const gy=H*0.74;
+
+  // Sky is a bit more daytime-ish — add a subtle stadium floodlight feel
+  // Floodlight glow on ground
+  ctx.save();
+  const floodL=ctx.createRadialGradient(W*0.5,gy,0,W*0.5,gy,W*0.45);
+  floodL.addColorStop(0,'rgba(255,240,180,0.05)');
+  floodL.addColorStop(1,'rgba(0,0,0,0)');
+  ctx.fillStyle=floodL;ctx.fillRect(0,0,W,H);
+  ctx.restore();
+
+  // ── NRL STADIUM (left half) ──────────────────────────────────────────────
+
+  const stadX=W*0.26, stadY=gy;
+
+  // Grandstand shape
+  ctx.fillStyle='#1a2e1a';
+  ctx.beginPath();
+  ctx.moveTo(stadX-130,stadY);
+  ctx.lineTo(stadX-130,stadY-70);
+  ctx.lineTo(stadX-90,stadY-85);
+  ctx.lineTo(stadX+90,stadY-85);
+  ctx.lineTo(stadX+130,stadY-70);
+  ctx.lineTo(stadX+130,stadY);
+  ctx.closePath();ctx.fill();
+
+  // Seating tiers
+  ctx.fillStyle='#243824';
+  ctx.beginPath();
+  ctx.moveTo(stadX-120,stadY-2);
+  ctx.lineTo(stadX-120,stadY-65);
+  ctx.lineTo(stadX-82,stadY-78);
+  ctx.lineTo(stadX+82,stadY-78);
+  ctx.lineTo(stadX+120,stadY-65);
+  ctx.lineTo(stadX+120,stadY-2);
+  ctx.closePath();ctx.fill();
+
+  // Crowd dots (simplified)
+  for(let row=0;row<4;row++){
+    for(let col=0;col<22;col++){
+      const cx2=stadX-100+col*9.5;
+      const cy2=stadY-18-row*13;
+      const hue=Math.sin(row*7+col*3+t*0.05)>0;
+      ctx.beginPath();ctx.arc(cx2,cy2,2.5,0,Math.PI*2);
+      ctx.fillStyle=hue?'rgba(220,80,80,0.7)':'rgba(80,80,200,0.6)';
+      ctx.fill();
+    }
+  }
+
+  // Pitch (green rectangle in middle)
+  ctx.fillStyle='#1a4a0a';
+  ctx.fillRect(stadX-78,stadY-72,156,30);
+  // pitch lines
+  ctx.strokeStyle='rgba(255,255,255,0.25)';ctx.lineWidth=1;
+  ctx.beginPath();ctx.moveTo(stadX,stadY-72);ctx.lineTo(stadX,stadY-42);ctx.stroke();
+  ctx.beginPath();ctx.arc(stadX,stadY-57,12,0,Math.PI*2);ctx.stroke();
+
+  // Floodlight towers
+  [[stadX-110,stadY-80],[stadX+110,stadY-80]].forEach(([fx,fy])=>{
+    ctx.strokeStyle='#607080';ctx.lineWidth=2.5;
+    ctx.beginPath();ctx.moveTo(fx,stadY);ctx.lineTo(fx,fy-30);ctx.stroke();
+    ctx.fillStyle='#4a6070';ctx.fillRect(fx-12,fy-32,24,8);
+    // light glow
+    const gl=0.6+0.4*Math.sin(t*0.8+(fx>stadX?1:0));
+    for(let i=0;i<5;i++){
+      const lx=fx-10+i*5;
+      ctx.beginPath();ctx.arc(lx,fy-28,3,0,Math.PI*2);
+      ctx.fillStyle=`rgba(255,240,160,${gl})`;
+      ctx.shadowColor='rgba(255,240,100,0.8)';ctx.shadowBlur=8*gl;
+      ctx.fill();ctx.shadowBlur=0;
+    }
+  });
+
+  label(stadX,gy+20,'NRL STADIUM','MATCH IN PROGRESS','rgba(255,180,0,0.9)','rgba(255,140,0,0.5)');
+
+  // ── SIDELINE REPORTER ────────────────────────────────────────────────────
+
+  const repX=stadX+95, repY=gy-10;
+
+  // Reporter person
+  ctx.save();ctx.translate(repX,repY);
+  // Body
+  ctx.fillStyle='#2a4a6a';
+  ctx.fillRect(-6,-28,12,20);
+  // Head
+  ctx.fillStyle='#c8a080';
+  ctx.beginPath();ctx.arc(0,-32,8,0,Math.PI*2);ctx.fill();
+  // Headphones
+  ctx.strokeStyle='#303030';ctx.lineWidth=2;
+  ctx.beginPath();ctx.arc(0,-32,9,-Math.PI*0.9,Math.PI*0.1);ctx.stroke();
+  ctx.beginPath();ctx.arc(-9,-32,3,0,Math.PI*2);ctx.fillStyle='#202020';ctx.fill();
+  ctx.beginPath();ctx.arc(9,-32,3,0,Math.PI*2);ctx.fill();
+  // Mic on boom
+  ctx.strokeStyle='#808080';ctx.lineWidth=1.5;
+  ctx.beginPath();ctx.moveTo(5,-20);ctx.lineTo(18,-12);ctx.stroke();
+  ctx.beginPath();ctx.arc(20,-10,4,0,Math.PI*2);ctx.fillStyle='#303030';ctx.fill();
+  ctx.restore();
+
+  ctx.textAlign='center';ctx.font='0.5rem "Share Tech Mono"';
+  ctx.fillStyle='rgba(255,180,0,0.7)';
+  ctx.fillText('SIDELINE',repX,repY+12);
+  ctx.fillText('REPORTER',repX,repY+23);
+
+  // ── TIELINE CODEC BOX ────────────────────────────────────────────────────
+
+  const codecX=stadX+145, codecY=gy-38;
+
+  // Codec unit (ruggedised field unit)
+  ctx.save();ctx.translate(codecX,codecY);
+  // Main chassis
+  const cg=ctx.createLinearGradient(-32,-20,32,20);
+  cg.addColorStop(0,'#1a3a1a');cg.addColorStop(0.5,'#243824');cg.addColorStop(1,'#1a3a1a');
+  ctx.fillStyle=cg;
+  ctx.strokeStyle='rgba(0,245,160,0.5)';ctx.lineWidth=1.5;
+  ctx.beginPath();ctx.roundRect(-32,-20,64,40,4);ctx.fill();ctx.stroke();
+
+  // Tieline logo text
+  ctx.font='bold 0.55rem "Share Tech Mono"';ctx.fillStyle='#00f5a0';ctx.textAlign='center';
+  ctx.fillText('TIELINE',0,-7);
+  ctx.font='0.42rem "Share Tech Mono"';ctx.fillStyle='rgba(0,195,245,0.7)';
+  ctx.fillText('MERLIN CODEC',0,4);
+
+  // Status LEDs
+  const led1=0.5+0.5*Math.sin(t*3);
+  const led2=0.5+0.5*Math.sin(t*3+1);
+  ctx.beginPath();ctx.arc(-18,12,3,0,Math.PI*2);
+  ctx.fillStyle=`rgba(0,245,160,${0.6+0.4*led1})`;ctx.shadowColor='#00f5a0';ctx.shadowBlur=5*led1;ctx.fill();ctx.shadowBlur=0;
+  ctx.beginPath();ctx.arc(-10,12,3,0,Math.PI*2);
+  ctx.fillStyle=`rgba(255,200,0,${0.6+0.4*led2})`;ctx.shadowColor='#ffcc00';ctx.shadowBlur=5*led2;ctx.fill();ctx.shadowBlur=0;
+  ctx.beginPath();ctx.arc(-2,12,3,0,Math.PI*2);
+  ctx.fillStyle='rgba(0,195,245,0.8)';ctx.shadowColor='#00c3f5';ctx.shadowBlur=4;ctx.fill();ctx.shadowBlur=0;
+
+  // XLR/audio connectors on side
+  ctx.fillStyle='#303830';
+  ctx.fillRect(28,-10,6,20);
+  ctx.fillStyle='rgba(100,200,100,0.4)';
+  ctx.fillRect(29,-8,4,4);ctx.fillRect(29,4,4,4);
+
+  // Antenna stubs
+  ctx.strokeStyle='#4a6a4a';ctx.lineWidth=2;
+  ctx.beginPath();ctx.moveTo(-15,-20);ctx.lineTo(-18,-34);ctx.stroke();
+  ctx.beginPath();ctx.moveTo(-8,-20);ctx.lineTo(-8,-36);ctx.stroke();
+
+  ctx.restore();
+
+  // Cable from reporter to codec
+  ctx.strokeStyle='rgba(100,200,100,0.6)';ctx.lineWidth=2;
+  ctx.setLineDash([4,4]);ctx.lineDashOffset=-t*12;
+  ctx.beginPath();ctx.moveTo(repX+10,repY-18);ctx.bezierCurveTo(repX+35,repY-10,codecX-40,codecY+5,codecX-32,codecY);
+  ctx.stroke();ctx.setLineDash([]);
+
+  label(codecX,codecY+28,'TIELINE CODEC','FIELD UNIT','rgba(0,245,160,0.9)','rgba(0,195,245,0.5)');
+
+  // ── PORTABLE ROUTER ──────────────────────────────────────────────────────
+
+  const routerX=stadX+220, routerY=gy-38;
+  const cBeam=0.3+0.12*Math.sin(t*2);
+
+  // Draw portable router (small box with wifi symbol and SIM slots)
+  ctx.save();ctx.translate(routerX,routerY);
+  const rg=ctx.createLinearGradient(-26,-18,26,18);
+  rg.addColorStop(0,'#1a2a3a');rg.addColorStop(0.5,'#243040');rg.addColorStop(1,'#1a2a3a');
+  ctx.fillStyle=rg;ctx.strokeStyle='rgba(0,195,245,0.55)';ctx.lineWidth=1.5;
+  ctx.beginPath();ctx.roundRect(-26,-18,52,36,4);ctx.fill();ctx.stroke();
+
+  // Label
+  ctx.font='bold 0.48rem "Share Tech Mono"';ctx.fillStyle='#00c3f5';ctx.textAlign='center';
+  ctx.fillText('PORTABLE',0,-5);ctx.fillText('ROUTER',0,5);
+
+  // WiFi symbol
+  ctx.strokeStyle='rgba(0,195,245,0.7)';ctx.lineWidth=1.5;
+  [8,13,18].forEach((r,i)=>{
+    const wg=0.5+0.5*Math.sin(t*3+i*0.5);
+    ctx.globalAlpha=0.3+0.5*wg;
+    ctx.beginPath();ctx.arc(0,-18,r,-Math.PI*0.75,-Math.PI*0.25);ctx.stroke();
+  });
+  ctx.globalAlpha=1;
+  ctx.beginPath();ctx.arc(0,-18,3,0,Math.PI*2);
+  ctx.fillStyle='#00c3f5';ctx.fill();
+
+  // SIM / 4G indicator LED
+  const sl=0.5+0.5*Math.sin(t*4+2);
+  ctx.beginPath();ctx.arc(16,10,3,0,Math.PI*2);
+  ctx.fillStyle=`rgba(0,245,160,${0.6+0.4*sl})`;ctx.shadowColor='#00f5a0';ctx.shadowBlur=5*sl;ctx.fill();ctx.shadowBlur=0;
+
+  // Antenna stubs on top
+  ctx.strokeStyle='#4a6a8a';ctx.lineWidth=2;
+  ctx.beginPath();ctx.moveTo(-10,-18);ctx.lineTo(-12,-30);ctx.stroke();
+  ctx.beginPath();ctx.moveTo(10,-18);ctx.lineTo(13,-32);ctx.stroke();
+
+  ctx.restore();
+
+  label(routerX,routerY+26,'YOUR NETWORK','PORTABLE ROUTER','rgba(0,195,245,0.9)','rgba(0,195,245,0.45)');
+
+  // WiFi beam: codec → router
+  beam(codecX+32,codecY,routerX-26,routerY,'rgb(0,245,160)','rgb(0,195,245)',cBeam,1.5);
+  if(Math.random()<0.05)spawnPkt(codecX+32,codecY,routerX-26,routerY,'#00f5a0');
+
+  // ── 4G TOWER & INTERNET CLOUD ─────────────────────────────────────────────
+
+  const cloudX=W*0.62, cloudY=H*0.35;
+  const towerX=routerX+70, towerY=gy;
+
+  // 4G cell tower
+  mast(towerX,towerY,52,'#4a6a4a');
+  for(let i=0;i<3;i++){
+    ctx.fillStyle='#3a5a3a';ctx.fillRect(towerX-8,towerY-52-(i*9),16,5);
+  }
+  ctx.textAlign='center';ctx.font='0.44rem "Share Tech Mono"';
+  ctx.fillStyle='rgba(0,245,160,0.48)';
+  ctx.fillText('4G CELL',towerX,towerY+18);
+  ctx.font='0.38rem "Share Tech Mono"';
+  ctx.fillStyle='rgba(0,245,160,0.32)';
+  ctx.fillText('TOWER',towerX,towerY+29);
+
+  // Router → 4G tower (your device connects to the tower)
+  beam(routerX+10,routerY-18,towerX,towerY-52,'rgb(0,195,245)','rgb(0,245,160)',cBeam*0.9,1.5);
+  if(Math.random()<0.04)spawnPkt(routerX+10,routerY-18,towerX,towerY-52,'#00c3f5');
+
+  // Internet cloud
+  ctx.save();ctx.translate(cloudX,cloudY);
+  const cloudPulse=0.5+0.5*Math.sin(t*0.8);
+  ctx.fillStyle=`rgba(0,30,50,${0.75+0.1*cloudPulse})`;
+  ctx.strokeStyle=`rgba(0,195,245,${0.35+0.2*cloudPulse})`;
+  ctx.lineWidth=1.5;
+  ctx.beginPath();
+  ctx.arc(-35,10,20,0,Math.PI*2);ctx.arc(-10,-6,26,0,Math.PI*2);
+  ctx.arc(18,-2,22,0,Math.PI*2);ctx.arc(38,12,16,0,Math.PI*2);
+  ctx.fill();ctx.stroke();
+  ctx.font='bold 0.53rem "Share Tech Mono"';ctx.fillStyle='#00c3f5';ctx.textAlign='center';
+  ctx.fillText('INTERNET',0,2);
+  ctx.font='0.4rem "Share Tech Mono"';ctx.fillStyle='rgba(0,195,245,0.5)';
+  ctx.fillText('PRIORITY 4G TIER',0,13);
+  ctx.restore();
+
+  // Priority tier indicator beside tower
+  ctx.save();ctx.translate(towerX+22,towerY-70);
+  ctx.fillStyle='rgba(2,11,24,0.85)';
+  ctx.strokeStyle='rgba(0,195,245,0.25)';ctx.lineWidth=1;
+  ctx.beginPath();ctx.roundRect(0,-2,88,58,3);ctx.fill();ctx.stroke();
+  ctx.font='bold 0.42rem "Share Tech Mono"';ctx.textAlign='left';
+  ctx.fillStyle='rgba(0,195,245,0.55)';ctx.fillText('PRIORITY TIER',6,10);
+  // Tier 1
+  ctx.fillStyle='rgba(255,80,80,0.9)';ctx.fillRect(6,16,8,8);
+  ctx.fillStyle='rgba(200,200,200,0.7)';ctx.font='0.38rem "Share Tech Mono"';
+  ctx.fillText('EMERGENCY SVC',20,23);
+  // Tier 2 — broadcast (you)
+  const yh=0.5+0.5*Math.sin(t*3);
+  ctx.fillStyle=`rgba(255,200,0,${0.8+0.2*yh})`;ctx.fillRect(6,29,8,8);
+  ctx.shadowColor='#ffcc00';ctx.shadowBlur=4*yh;
+  ctx.fillStyle='rgba(255,200,0,0.9)';ctx.font='bold 0.38rem "Share Tech Mono"';
+  ctx.fillText('BROADCAST ◀ YOU',20,36);
+  ctx.shadowBlur=0;
+  // Tier 3
+  ctx.fillStyle='rgba(100,100,120,0.6)';ctx.fillRect(6,42,8,8);
+  ctx.fillStyle='rgba(150,150,170,0.6)';ctx.font='0.38rem "Share Tech Mono"';
+  ctx.fillText('GENERAL PUBLIC',20,49);
+  ctx.restore();
+  if(Math.random()<0.03)spawnPkt(towerX,towerY-52,cloudX-20,cloudY+14,'#00c3f5');
+
+  // ── RADIO STUDIO (right) ─────────────────────────────────────────────────
+
+  const stuX=W*0.87;
+  const stu=building(stuX,gy,6,92);
+  stlDish(stuX-30,stu.topY,false);
+  mast(stuX+30,stu.topY,60);
+
+  // Cloud → studio
+  beam(cloudX+38,cloudY+6,stuX-28,stu.topY-8,'rgb(0,195,245)','rgb(0,245,160)',cBeam*0.9);
+  if(Math.random()<0.04)spawnPkt(cloudX+38,cloudY+6,stuX-28,stu.topY-8,'#00c3f5');
+
+  label(stuX,gy+20,'RADIO STUDIO','RECEIVES CODEC FEED','rgba(0,245,160,0.88)','rgba(0,195,245,0.45)');
+
+  const onAir=0.5+0.5*Math.sin(t*4);
+  ctx.save();ctx.translate(stuX,stu.topY+24);
+  ctx.fillStyle=`rgba(255,40,40,${0.7+0.3*onAir})`;
+  ctx.shadowColor='red';ctx.shadowBlur=10*onAir;
+  ctx.font='bold 0.55rem "Share Tech Mono"';ctx.textAlign='center';
+  ctx.fillText('● ON AIR',0,0);
+  ctx.shadowBlur=0;ctx.restore();
+
+  // All packets
+  pkts.forEach((p,i)=>{
+    if(p.p<0){p.p+=p.s;return;}
+    p.p+=p.s;if(p.p>1){pkts.splice(i,1);return;}
+    const px=p.fx+(p.tx-p.fx)*p.p,py=p.fy+(p.ty-p.fy)*p.p;
+    ctx.beginPath();ctx.arc(px,py,2.8,0,Math.PI*2);
+    ctx.fillStyle=p.c;ctx.shadowColor=p.c;ctx.shadowBlur=7;ctx.fill();ctx.shadowBlur=0;
+  });
+}
+
+// ── SCENARIO 4 BACKGROUND: UNDERGROUND CROSS-SECTION ─────────────────────────
+
+function drawBackground4(){
+  const gy=H*0.74;
+
+  // Daytime sky (muted blue-grey — not broadcast night sky)
+  const skyG=ctx.createLinearGradient(0,0,0,gy);
+  skyG.addColorStop(0,'#0d1a2a');skyG.addColorStop(0.5,'#0e2035');skyG.addColorStop(1,'#0f2818');
+  ctx.fillStyle=skyG;ctx.fillRect(0,0,W,gy);
+
+  // ── UNDERGROUND ZONE ─────────────────────────────────────────────────────
+  // Layer 1: topsoil (just below surface)
+  const l1h=H*0.06;
+  const l1g=ctx.createLinearGradient(0,gy,0,gy+l1h);
+  l1g.addColorStop(0,'#1a2e0a');l1g.addColorStop(1,'#142208');
+  ctx.fillStyle=l1g;ctx.fillRect(0,gy,W,l1h);
+
+  // Layer 2: subsoil / clay
+  const l2y=gy+l1h, l2h=H*0.07;
+  const l2g=ctx.createLinearGradient(0,l2y,0,l2y+l2h);
+  l2g.addColorStop(0,'#2a1a08');l2g.addColorStop(1,'#1e1206');
+  ctx.fillStyle=l2g;ctx.fillRect(0,l2y,W,l2h);
+
+  // Layer 3: deep ground / bedrock
+  const l3y=l2y+l2h;
+  const l3g=ctx.createLinearGradient(0,l3y,0,H);
+  l3g.addColorStop(0,'#120e06');l3g.addColorStop(1,'#080604');
+  ctx.fillStyle=l3g;ctx.fillRect(0,l3y,W,H-l3y);
+
+  // Surface line (road/footpath)
+  ctx.strokeStyle='rgba(100,140,80,0.5)';ctx.lineWidth=2;
+  ctx.beginPath();ctx.moveTo(0,gy);ctx.lineTo(W,gy);ctx.stroke();
+
+  // Subtle rock/soil texture marks
+  ctx.fillStyle='rgba(255,200,100,0.04)';
+  for(let i=0;i<18;i++){
+    const rx=(i*137.5)%1*W, ry=gy+20+(i*97.3)%1*(H-gy-30);
+    ctx.beginPath();ctx.ellipse(rx,ry,8+i%5*4,3+i%3*2,0,0,Math.PI*2);ctx.fill();
+  }
+
+  // Layer labels (left margin)
+  ctx.font='0.36rem "Share Tech Mono"';ctx.textAlign='left';
+  ctx.fillStyle='rgba(100,140,60,0.4)';ctx.fillText('▼ TOPSOIL',8,gy+l1h*0.6);
+  ctx.fillStyle='rgba(160,120,60,0.35)';ctx.fillText('▼ SUBSOIL / CLAY',8,l2y+l2h*0.6);
+  ctx.fillStyle='rgba(120,100,60,0.3)';ctx.fillText('▼ DEEP GROUND',8,l3y+18);
+
+  // Telstra conduit duct band (runs across whole width at conduit depth)
+  const ductY=gy+l1h*0.55;
+  ctx.fillStyle='rgba(255,200,0,0.04)';
+  ctx.fillRect(0,ductY-10,W,20);
+  ctx.strokeStyle='rgba(255,200,0,0.08)';ctx.lineWidth=1;
+  ctx.beginPath();ctx.moveTo(0,ductY-10);ctx.lineTo(W,ductY-10);ctx.stroke();
+  ctx.beginPath();ctx.moveTo(0,ductY+10);ctx.lineTo(W,ductY+10);ctx.stroke();
+
+  // Ground surface glow
+  const gl=ctx.createLinearGradient(0,gy-6,0,gy+40);
+  gl.addColorStop(0,'rgba(0,245,160,0.04)');gl.addColorStop(1,'rgba(0,0,0,0)');
+  ctx.fillStyle=gl;ctx.fillRect(0,gy-6,W,46);
+}
+
+// ── SCENARIO 5 BACKGROUND: DVN UNDERGROUND CROSS-SECTION ─────────────────────
+
+function drawBackground5(){
+  const gy=H*0.74;
+
+  // Sky
+  const skyG=ctx.createLinearGradient(0,0,0,gy);
+  skyG.addColorStop(0,'#040d18');skyG.addColorStop(0.5,'#071525');skyG.addColorStop(1,'#091e12');
+  ctx.fillStyle=skyG;ctx.fillRect(0,0,W,gy);
+
+  // Layer 1: topsoil
+  const l1h=H*0.06;
+  const l1g=ctx.createLinearGradient(0,gy,0,gy+l1h);
+  l1g.addColorStop(0,'#1a2e0a');l1g.addColorStop(1,'#142208');
+  ctx.fillStyle=l1g;ctx.fillRect(0,gy,W,l1h);
+
+  // Layer 2: subsoil
+  const l2y=gy+l1h, l2h=H*0.07;
+  const l2g=ctx.createLinearGradient(0,l2y,0,l2y+l2h);
+  l2g.addColorStop(0,'#2a1a08');l2g.addColorStop(1,'#1e1206');
+  ctx.fillStyle=l2g;ctx.fillRect(0,l2y,W,l2h);
+
+  // Layer 3: deep ground
+  const l3y=l2y+l2h;
+  const l3g=ctx.createLinearGradient(0,l3y,0,H);
+  l3g.addColorStop(0,'#120e06');l3g.addColorStop(1,'#080604');
+  ctx.fillStyle=l3g;ctx.fillRect(0,l3y,W,H-l3y);
+
+  // Surface line
+  ctx.strokeStyle='rgba(100,140,80,0.5)';ctx.lineWidth=2;
+  ctx.beginPath();ctx.moveTo(0,gy);ctx.lineTo(W,gy);ctx.stroke();
+
+  // Soil texture
+  ctx.fillStyle='rgba(0,245,160,0.025)';
+  for(let i=0;i<18;i++){
+    const rx=(i*137.5)%1*W, ry=gy+20+(i*97.3)%1*(H-gy-30);
+    ctx.beginPath();ctx.ellipse(rx,ry,8+i%5*4,3+i%3*2,0,0,Math.PI*2);ctx.fill();
+  }
+
+  // Layer labels
+  ctx.font='0.36rem "Share Tech Mono"';ctx.textAlign='left';
+  ctx.fillStyle='rgba(100,140,60,0.4)';ctx.fillText('▼ TOPSOIL',8,gy+l1h*0.6);
+  ctx.fillStyle='rgba(160,120,60,0.35)';ctx.fillText('▼ SUBSOIL / CLAY',8,l2y+l2h*0.6);
+  ctx.fillStyle='rgba(120,100,60,0.3)';ctx.fillText('▼ DEEP GROUND',8,l3y+18);
+
+  // DVN conduit band hint
+  const ductY=gy+l1h*0.5;
+  ctx.fillStyle='rgba(0,245,160,0.03)';
+  ctx.fillRect(0,ductY-12,W,24);
+
+  // Surface glow
+  const gl=ctx.createLinearGradient(0,gy-6,0,gy+40);
+  gl.addColorStop(0,'rgba(0,245,160,0.04)');gl.addColorStop(1,'rgba(0,0,0,0)');
+  ctx.fillStyle=gl;ctx.fillRect(0,gy-6,W,46);
+}
+
+// ── SCENARIO 4: ISDN STUDIO-TO-STUDIO ────────────────────────────────────────
+
+function drawScenario4(){
+  const gy=H*0.74;
+
+  // Two cities either side — labels floating in sky
+  ctx.textAlign='center';
+  ctx.font='bold 0.52rem "Share Tech Mono"';
+  ctx.fillStyle='rgba(255,200,80,0.35)';
+  ctx.fillText('QUEENSLAND',W*0.15,H*0.22);
+  ctx.fillText('NEW SOUTH WALES',W*0.85,H*0.22);
+
+  // ── STUDIO A (left — QLD) ────────────────────────────────────────────────
+
+  const aX=W*0.13;
+  const aB=building(aX,gy,6,95);
+  label(aX,gy+20,'STUDIO A','QUEENSLAND','rgba(0,245,160,0.88)','rgba(0,195,245,0.45)');
+
+  // Mixing desk inside building (visible through window glow)
+  ctx.save();
+  ctx.fillStyle='rgba(0,245,160,0.08)';
+  ctx.fillRect(aX-30,aB.topY+aB.bh*0.4,60,aB.bh*0.25);
+  ctx.restore();
+
+  // ISDN Codec box A — inside building (rack mounted)
+  const cAx=aX+12, cAy=aB.topY + aB.bh*0.35;
+  drawIsdnCodec(cAx, cAy, 'A');
+  label(cAx, cAy+28, 'ISDN CODEC', 'INSIDE STUDIO', 'rgba(255,200,0,0.85)', 'rgba(255,180,0,0.45)');
+
+  // ── TELEPHONE EXCHANGE A (QLD) ───────────────────────────────────────────
+
+  const exAx=W*0.31, exAy=gy;
+  drawExchange(exAx, exAy, 'QLD EXCHANGE');
+
+  // Cable: codec A → exchange A (underground)
+  drawIsdnCable(cAx+28, cAy+8, exAx-22, exAy-50);
+
+  // ── INTERSTATE ISDN BACKBONE (UNDERGROUND) ───────────────────────────────
+
+  const midX=W*0.5;
+  const l1h=H*0.06;
+  const underY=gy+l1h*0.55; // sits in the topsoil/conduit layer
+
+  // Vertical cable drops from exchanges — going down through soil into conduit
+  [exAx, W-exAx].forEach(x=>{
+    // Cable going from exchange building down through surface into ground
+    ctx.save();
+    ctx.strokeStyle='rgba(255,200,0,0.25)';ctx.lineWidth=3;
+    ctx.beginPath();ctx.moveTo(x,gy-50);ctx.lineTo(x,underY);ctx.stroke();
+    // Animated signal on cable
+    ctx.strokeStyle='rgba(255,200,0,0.5)';ctx.lineWidth=1.5;
+    ctx.setLineDash([5,4]);ctx.lineDashOffset=-t*18;
+    ctx.beginPath();ctx.moveTo(x,gy-50);ctx.lineTo(x,underY);ctx.stroke();
+    ctx.setLineDash([]);
+    // Junction dot at conduit entry
+    ctx.beginPath();ctx.arc(x,underY,5,0,Math.PI*2);
+    ctx.fillStyle='rgba(255,200,0,0.7)';ctx.fill();
+    // Surface entry point marker
+    ctx.beginPath();ctx.arc(x,gy,3,0,Math.PI*2);
+    ctx.fillStyle='rgba(255,200,0,0.4)';ctx.fill();
+    ctx.restore();
+    if(Math.random()<0.03) spawnPkt(x,gy-50,x,underY,'#ffcc00');
+  });
+
+  // Conduit pipe (outer casing)
+  ctx.save();
+  ctx.strokeStyle='rgba(120,100,40,0.7)';ctx.lineWidth=16;ctx.lineCap='round';
+  ctx.beginPath();ctx.moveTo(exAx,underY);ctx.lineTo(W-exAx,underY);ctx.stroke();
+
+  // Conduit inner (dark fill)
+  ctx.strokeStyle='rgba(15,12,4,0.95)';ctx.lineWidth=12;
+  ctx.beginPath();ctx.moveTo(exAx,underY);ctx.lineTo(W-exAx,underY);ctx.stroke();
+
+  // Fibre strand QLD→NSW
+  ctx.strokeStyle='rgba(255,200,0,0.28)';ctx.lineWidth=2.5;
+  ctx.beginPath();ctx.moveTo(exAx,underY-3);ctx.lineTo(W-exAx,underY-3);ctx.stroke();
+
+  // Fibre strand NSW→QLD
+  ctx.strokeStyle='rgba(255,160,0,0.28)';ctx.lineWidth=2.5;
+  ctx.beginPath();ctx.moveTo(exAx,underY+3);ctx.lineTo(W-exAx,underY+3);ctx.stroke();
+
+  // Animated signal on fibres
+  ctx.strokeStyle='rgba(255,200,0,0.75)';ctx.lineWidth=1.5;
+  ctx.setLineDash([10,7]);ctx.lineDashOffset=-t*32;
+  ctx.beginPath();ctx.moveTo(exAx,underY-3);ctx.lineTo(W-exAx,underY-3);ctx.stroke();
+  ctx.strokeStyle='rgba(255,160,0,0.75)';
+  ctx.lineDashOffset=t*32;
+  ctx.beginPath();ctx.moveTo(exAx,underY+3);ctx.lineTo(W-exAx,underY+3);ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Conduit label
+  ctx.textAlign='center';
+  ctx.font='0.42rem "Share Tech Mono"';ctx.fillStyle='rgba(255,200,0,0.5)';
+  ctx.fillText('ISDN BACKBONE — TELSTRA UNDERGROUND CONDUIT',midX,underY-14);
+  ctx.font='0.36rem "Share Tech Mono"';ctx.fillStyle='rgba(255,200,0,0.28)';
+  ctx.fillText('COPPER PAIRS / FIBRE  ·  DEDICATED CIRCUIT  ·  64 KBPS PER B-CHANNEL  ·  NO INTERNET',midX,underY+18);
+  ctx.restore();
+
+  // State border marker
+  ctx.save();
+  ctx.strokeStyle='rgba(255,160,0,0.18)';ctx.lineWidth=1;ctx.setLineDash([4,4]);
+  ctx.beginPath();ctx.moveTo(midX,gy-H*0.08);ctx.lineTo(midX,underY+8);ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.textAlign='center';ctx.font='0.4rem "Share Tech Mono"';
+  ctx.fillStyle='rgba(255,160,0,0.32)';
+  ctx.fillText('STATE BORDER',midX,gy-H*0.1);
+  ctx.restore();
+
+  // Packets along backbone (below ground)
+  if(Math.random()<0.045) spawnPkt(exAx+5,underY-3, W-exAx-5,underY-3,'#ffcc00');
+  if(Math.random()<0.045) spawnPkt(W-exAx-5,underY+3, exAx+5,underY+3,'#ffaa00');
+
+  // ── ISDN DEFINITION PANEL ─────────────────────────────────────────────────
+
+  ctx.save();ctx.translate(midX, H*0.28);
+  ctx.fillStyle='rgba(2,11,24,0.88)';
+  ctx.strokeStyle='rgba(255,200,0,0.25)';ctx.lineWidth=1;
+  ctx.beginPath();ctx.roundRect(-160,-28,320,56,5);ctx.fill();ctx.stroke();
+  ctx.textAlign='center';
+  ctx.font='bold 0.55rem "Share Tech Mono"';ctx.fillStyle='rgba(255,200,0,0.9)';
+  ctx.fillText('ISDN — INTEGRATED SERVICES DIGITAL NETWORK',0,-12);
+  ctx.font='0.42rem "Share Tech Mono"';ctx.fillStyle='rgba(180,200,220,0.7)';
+  ctx.fillText('A digital phone line that carries audio as data over the copper telephone network.',0,3);
+  ctx.fillText('Circuit-switched — full bandwidth reserved for your call. No packets, no internet.',0,16);
+  ctx.restore();
+
+  // ── TELEPHONE EXCHANGE B (NSW) ───────────────────────────────────────────
+
+  const exBx=W-exAx, exBy=gy;
+  drawExchange(exBx, exBy, 'NSW EXCHANGE');
+
+  // ── STUDIO B (right — NSW) ───────────────────────────────────────────────
+
+  const bX=W*0.87;
+  const bB=building(bX,gy,6,95);
+  label(bX,gy+20,'STUDIO B','NEW SOUTH WALES','rgba(0,195,245,0.88)','rgba(0,195,245,0.45)');
+
+  // ISDN Codec box B — inside building (rack mounted)
+  const cBx=bX-12, cBy=bB.topY + bB.bh*0.35;
+  drawIsdnCodec(cBx, cBy, 'B');
+  label(cBx, cBy+28, 'ISDN CODEC', 'INSIDE STUDIO', 'rgba(255,200,0,0.85)', 'rgba(255,180,0,0.45)');
+
+  // Cable: exchange B → codec B
+  drawIsdnCable(exBx+22, exBy-50, cBx-28, cBy+8);
+
+  // ── PRESENTER CROSS INDICATOR ─────────────────────────────────────────────
+  // No arc in the sky — the signal travels entirely underground through cables.
+  // underY already declared above in backbone section
+
+  // Highlight the full cable path with a subtle ground-level glow
+  ctx.save();
+  const pathGlow=0.12+0.06*Math.sin(t*1.5);
+  ctx.strokeStyle=`rgba(255,200,0,${pathGlow})`;ctx.lineWidth=8;
+  ctx.beginPath();
+  ctx.moveTo(cAx+10, cAy+8);
+  ctx.lineTo(cAx+10, gy);       // down from codec A to ground
+  ctx.lineTo(exAx, gy);         // along ground to exchange A
+  ctx.lineTo(exAx, underY);     // down into conduit
+  ctx.lineTo(W-exAx, underY);   // along underground backbone
+  ctx.lineTo(W-exAx, gy);       // up to exchange B
+  ctx.lineTo(cBx-10, gy);       // along ground to studio B
+  ctx.lineTo(cBx-10, cBy+8);    // up into codec B
+  ctx.stroke();
+  ctx.restore();
+
+  // "LIVE CROSS" label — sits on the ground, not in the sky
+  ctx.textAlign='center';ctx.font='bold 0.5rem "Share Tech Mono"';
+  const liveP=0.5+0.5*Math.sin(t*3);
+  ctx.fillStyle=`rgba(255,200,0,${0.65+0.3*liveP})`;
+  ctx.shadowColor='rgba(255,200,0,0.5)';ctx.shadowBlur=8*liveP;
+  ctx.fillText('⬡ LIVE CROSS — ALL UNDERGROUND',midX,gy-14);
+  ctx.shadowBlur=0;
+
+  // ISDN note — decommissioning warning
+  ctx.save();ctx.translate(midX,H*0.62);
+  ctx.fillStyle='rgba(255,80,60,0.12)';
+  ctx.strokeStyle='rgba(255,80,60,0.3)';ctx.lineWidth=1;
+  ctx.beginPath();ctx.roundRect(-145,-16,290,32,4);ctx.fill();ctx.stroke();
+  ctx.font='0.44rem "Share Tech Mono"';ctx.fillStyle='rgba(255,100,80,0.75)';ctx.textAlign='center';
+  ctx.fillText('⚠  ISDN IS BEING DECOMMISSIONED BY TELCOS',0,0);
+  ctx.font='0.37rem "Share Tech Mono"';ctx.fillStyle='rgba(255,100,80,0.5)';
+  ctx.fillText('STATIONS NOW MOVING TO IP CODECS (e.g. TIELINE) OVER BROADBAND',0,12);
+  ctx.restore();
+
+  // Packets underground
+  pkts.forEach((p,i)=>{
+    if(p.p<0){p.p+=p.s;return;}
+    p.p+=p.s;if(p.p>1){pkts.splice(i,1);return;}
+    const px=p.fx+(p.tx-p.fx)*p.p,py=p.fy+(p.ty-p.fy)*p.p;
+    ctx.beginPath();ctx.arc(px,py,3,0,Math.PI*2);
+    ctx.fillStyle=p.c;ctx.shadowColor=p.c;ctx.shadowBlur=7;ctx.fill();ctx.shadowBlur=0;
+  });
+}
+
+// ISDN Codec unit
+function drawIsdnCodec(cx,cy,label){
+  ctx.save();ctx.translate(cx,cy);
+  const g=ctx.createLinearGradient(-28,-16,28,16);
+  g.addColorStop(0,'#2a2010');g.addColorStop(0.5,'#3a3018');g.addColorStop(1,'#2a2010');
+  ctx.fillStyle=g;ctx.strokeStyle='rgba(255,200,0,0.5)';ctx.lineWidth=1.5;
+  ctx.beginPath();ctx.roundRect(-28,-16,56,32,3);ctx.fill();ctx.stroke();
+  ctx.font='bold 0.48rem "Share Tech Mono"';ctx.fillStyle='#ffcc00';ctx.textAlign='center';
+  ctx.fillText('ISDN',0,-3);ctx.fillText('CODEC '+label,0,8);
+  // LEDs
+  ['#00f5a0','#ffcc00','#ff4040'].forEach((c,i)=>{
+    const gl=0.5+0.5*Math.sin(t*3+i*1.2);
+    ctx.beginPath();ctx.arc(-12+i*8,14,2.5,0,Math.PI*2);
+    ctx.fillStyle=c;ctx.shadowColor=c;ctx.shadowBlur=4*gl;ctx.fill();ctx.shadowBlur=0;
+  });
+  // RJ-45 jack
+  ctx.fillStyle='#222';ctx.fillRect(18,-6,8,12);
+  ctx.fillStyle='rgba(255,200,0,0.3)';ctx.fillRect(19,-5,6,10);
+  ctx.restore();
+}
+
+// Telephone exchange building
+function drawExchange(cx,gy,lbl){
+  const bh=55, bw=60, bx=cx-bw/2, by=gy-bh;
+  ctx.fillStyle='#1a1a2a';ctx.fillRect(bx,by,bw,bh);
+  ctx.fillStyle='#222235';
+  // Exchange grid pattern
+  for(let r=0;r<3;r++) for(let c=0;c<3;c++){
+    ctx.fillStyle=Math.sin(r*4+c*3+t*0.2)>0.3?'rgba(200,180,60,0.6)':'rgba(40,40,80,0.5)';
+    ctx.fillRect(bx+7+c*17,by+8+r*14,12,10);
+  }
+  ctx.fillStyle='#14142a';ctx.fillRect(bx-2,by,bw+4,5);
+  ctx.textAlign='center';ctx.font='bold 0.48rem "Share Tech Mono"';
+  ctx.fillStyle='rgba(255,200,0,0.8)';ctx.fillText(lbl,cx,gy+16);
+  ctx.font='0.4rem "Share Tech Mono"';ctx.fillStyle='rgba(255,180,0,0.45)';
+  ctx.fillText('PSTN / ISDN',cx,gy+27);
+}
+
+// ISDN cable with conduit look
+function drawIsdnCable(x1,y1,x2,y2){
+  ctx.save();
+  // Conduit shadow
+  ctx.strokeStyle='rgba(255,200,0,0.12)';ctx.lineWidth=5;
+  ctx.beginPath();ctx.moveTo(x1,y1);ctx.lineTo(x2,y2);ctx.stroke();
+  // Animated signal
+  ctx.strokeStyle='rgba(255,200,0,0.6)';ctx.lineWidth=1.8;
+  ctx.setLineDash([8,6]);ctx.lineDashOffset=-t*20;
+  ctx.beginPath();ctx.moveTo(x1,y1);ctx.lineTo(x2,y2);ctx.stroke();
+  ctx.setLineDash([]);
+  if(Math.random()<0.04) spawnPkt(x1,y1,x2,y2,'#ffcc00');
+  ctx.restore();
+}
+
+// Cubic bezier point helper
+function bezierPoint(p0,p1,p2,p3,t){
+  const mt=1-t;
+  return mt*mt*mt*p0 + 3*mt*mt*t*p1 + 3*mt*t*t*p2 + t*t*t*p3;
+}
+
+// ── SCENARIO 5: DVN LIVE GAME VISION ─────────────────────────────────────────
+
+function drawScenario5(){
+  const gy=H*0.74;
+
+  // ── NRL STADIUM (left) ───────────────────────────────────────────────────
+
+  const stadX=W*0.17, stadW=130, stadH=78;
+
+  // Stadium structure
+  ctx.save();
+  // Main bowl
+  ctx.fillStyle='#131a1f';
+  ctx.beginPath();ctx.roundRect(stadX-stadW/2, gy-stadH, stadW, stadH, 4);ctx.fill();
+  // Roof overhang
+  ctx.fillStyle='#1e2a32';
+  ctx.fillRect(stadX-stadW/2-8, gy-stadH-8, stadW+16, 12);
+  // Pitch
+  ctx.fillStyle='rgba(20,80,20,0.6)';
+  ctx.fillRect(stadX-38, gy-stadH+18, 76, 40);
+  // Centre line
+  ctx.strokeStyle='rgba(255,255,255,0.15)';ctx.lineWidth=1;
+  ctx.beginPath();ctx.moveTo(stadX,gy-stadH+18);ctx.lineTo(stadX,gy-stadH+58);ctx.stroke();
+  // Crowd dots
+  for(let i=0;i<22;i++){
+    const cx2=stadX-52+i*5, cy2=gy-stadH+8;
+    const blink=Math.sin(t*2+i*0.7)>0.6;
+    ctx.beginPath();ctx.arc(cx2,cy2,1.8,0,Math.PI*2);
+    ctx.fillStyle=blink?'rgba(255,100,0,0.9)':'rgba(255,220,100,0.4)';ctx.fill();
+  }
+  // Floodlights
+  [[stadX-55,gy-stadH-22],[stadX+55,gy-stadH-22]].forEach(([fx,fy])=>{
+    ctx.strokeStyle='rgba(200,200,200,0.5)';ctx.lineWidth=2;
+    ctx.beginPath();ctx.moveTo(fx,gy-stadH-8);ctx.lineTo(fx,fy);ctx.stroke();
+    ctx.fillStyle='rgba(255,240,180,0.8)';ctx.fillRect(fx-8,fy-3,16,5);
+    // Light cone
+    ctx.fillStyle='rgba(255,240,180,0.04)';
+    ctx.beginPath();ctx.moveTo(fx-8,fy+2);ctx.lineTo(stadX-38,gy-stadH+58);ctx.lineTo(stadX+38,gy-stadH+58);ctx.lineTo(fx+8,fy+2);ctx.fill();
+  });
+  ctx.restore();
+  label(stadX, gy+18, 'NRL STADIUM','LIVE MATCH','rgba(255,160,50,0.9)','rgba(255,130,30,0.4)');
+
+  // ── CAMERAS ──────────────────────────────────────────────────────────────
+
+  // Camera icon on sideline
+  const camX=stadX+64, camY=gy-stadH+45;
+  ctx.save();ctx.translate(camX,camY);
+  ctx.fillStyle='#222';ctx.fillRect(-10,-7,20,14);
+  ctx.fillStyle='#111';ctx.beginPath();ctx.arc(12,0,5,0,Math.PI*2);ctx.fill();
+  ctx.strokeStyle='rgba(255,80,80,0.8)';ctx.lineWidth=1.5;ctx.beginPath();ctx.arc(12,0,5,0,Math.PI*2);ctx.stroke();
+  // REC blink
+  const recBlink=Math.sin(t*4)>0;
+  ctx.beginPath();ctx.arc(-6,-9,3,0,Math.PI*2);
+  ctx.fillStyle=recBlink?'rgba(255,60,60,0.95)':'rgba(100,20,20,0.5)';
+  ctx.shadowColor='#ff3030';ctx.shadowBlur=recBlink?6:0;ctx.fill();ctx.shadowBlur=0;
+  ctx.restore();
+
+  // Camera cable to OB van
+  const obX=W*0.32, obY=gy-38;
+  ctx.save();
+  ctx.strokeStyle='rgba(0,200,255,0.3)';ctx.lineWidth=3;
+  ctx.beginPath();ctx.moveTo(camX+14,camY);ctx.lineTo(obX-52,obY-8);ctx.stroke();
+  ctx.strokeStyle='rgba(0,200,255,0.7)';ctx.lineWidth=1;ctx.setLineDash([5,4]);ctx.lineDashOffset=-t*15;
+  ctx.beginPath();ctx.moveTo(camX+14,camY);ctx.lineTo(obX-52,obY-8);ctx.stroke();
+  ctx.setLineDash([]);
+  if(Math.random()<0.05) spawnPkt(camX+14,camY,obX-52,obY-8,'#00c8ff');
+  ctx.restore();
+
+  // ── OUTSIDE BROADCAST VAN ─────────────────────────────────────────────────
+
+  ctx.save();ctx.translate(obX, obY);
+  // Van body
+  const vg=ctx.createLinearGradient(-52,-28,52,28);
+  vg.addColorStop(0,'#1a2a35');vg.addColorStop(1,'#0e1820');
+  ctx.fillStyle=vg;ctx.strokeStyle='rgba(0,200,255,0.4)';ctx.lineWidth=1.5;
+  ctx.beginPath();ctx.roundRect(-52,-28,104,56,5);ctx.fill();ctx.stroke();
+  // Cab
+  ctx.fillStyle='#152030';ctx.beginPath();ctx.roundRect(-52,-28,32,36,3);ctx.fill();
+  // Windscreen
+  ctx.fillStyle='rgba(100,180,255,0.15)';ctx.fillRect(-48,-24,22,20);
+  // Wheels
+  [-36,28].forEach(wx=>{
+    ctx.beginPath();ctx.arc(wx,28,8,0,Math.PI*2);
+    ctx.fillStyle='#111';ctx.fill();
+    ctx.strokeStyle='rgba(150,150,150,0.4)';ctx.lineWidth=1.5;ctx.stroke();
+  });
+  // Side label
+  ctx.font='bold 0.48rem "Share Tech Mono"';ctx.fillStyle='rgba(0,200,255,0.9)';ctx.textAlign='center';
+  ctx.fillText('OB VAN',8,-8);
+  ctx.font='0.38rem "Share Tech Mono"';ctx.fillStyle='rgba(0,200,255,0.5)';
+  ctx.fillText('OUTSIDE BROADCAST',8,4);
+  // Satellite dish on roof (OB vans have dishes too for backup)
+  ctx.strokeStyle='rgba(0,200,255,0.3)';ctx.lineWidth=1.5;
+  ctx.beginPath();ctx.arc(30,-32,10,Math.PI,0);ctx.stroke();
+  ctx.beginPath();ctx.moveTo(30,-42);ctx.lineTo(30,-28);ctx.stroke();
+  ctx.restore();
+  label(obX, gy+18,'OB VAN','PRODUCTION TRUCK','rgba(0,200,255,0.85)','rgba(0,180,255,0.35)');
+
+  // ── DVN FIBRE NODE AT STADIUM ─────────────────────────────────────────────
+
+  const nodeAx=W*0.46, nodeAy=gy-52;
+  drawDvnNode(nodeAx, nodeAy, 'DVN NODE\nSTADIUM');
+
+  // OB van → DVN node (fibre patch)
+  ctx.save();
+  ctx.strokeStyle='rgba(0,245,160,0.2)';ctx.lineWidth=5;
+  ctx.beginPath();ctx.moveTo(obX+52,obY);ctx.lineTo(nodeAx-20,nodeAy);ctx.stroke();
+  ctx.strokeStyle='rgba(0,245,160,0.8)';ctx.lineWidth=1.5;ctx.setLineDash([8,5]);ctx.lineDashOffset=-t*22;
+  ctx.beginPath();ctx.moveTo(obX+52,obY);ctx.lineTo(nodeAx-20,nodeAy);ctx.stroke();
+  ctx.setLineDash([]);
+  if(Math.random()<0.06) spawnPkt(obX+52,obY,nodeAx-20,nodeAy,'#00f5a0');
+  ctx.restore();
+  label(nodeAx, nodeAy+34,'DVN NODE','TELSTRA FIBRE IN','rgba(0,245,160,0.8)','rgba(0,245,160,0.3)');
+
+  // ── DVN BACKBONE — UNDERGROUND ───────────────────────────────────────────
+
+  const l1h=H*0.06;
+  const underY=gy+l1h*0.5; // sits in topsoil conduit layer
+  const nodeBx=W*0.62;
+
+  // Vertical fibre drops from each DVN node down through surface into conduit
+  [nodeAx, nodeBx].forEach(x=>{
+    // Drop cable
+    ctx.save();
+    ctx.strokeStyle='rgba(0,245,160,0.2)';ctx.lineWidth=4;
+    ctx.beginPath();ctx.moveTo(x,nodeAy+20);ctx.lineTo(x,underY);ctx.stroke();
+    ctx.strokeStyle='rgba(0,245,160,0.65)';ctx.lineWidth=1.5;
+    ctx.setLineDash([5,4]);ctx.lineDashOffset=-t*20;
+    ctx.beginPath();ctx.moveTo(x,nodeAy+20);ctx.lineTo(x,underY);ctx.stroke();
+    ctx.setLineDash([]);
+    // Surface entry dot
+    ctx.beginPath();ctx.arc(x,gy,3,0,Math.PI*2);
+    ctx.fillStyle='rgba(0,245,160,0.5)';ctx.fill();
+    // Conduit junction dot
+    ctx.beginPath();ctx.arc(x,underY,5,0,Math.PI*2);
+    ctx.fillStyle='rgba(0,245,160,0.75)';ctx.shadowColor='#00f5a0';ctx.shadowBlur=6;ctx.fill();ctx.shadowBlur=0;
+    ctx.restore();
+    if(Math.random()<0.04) spawnPkt(x,nodeAy+20,x,underY,'#00f5a0');
+  });
+
+  // Conduit outer casing
+  ctx.save();
+  ctx.strokeStyle='rgba(0,60,30,0.8)';ctx.lineWidth=20;ctx.lineCap='round';
+  ctx.beginPath();ctx.moveTo(nodeAx,underY);ctx.lineTo(nodeBx,underY);ctx.stroke();
+
+  // Conduit inner
+  ctx.strokeStyle='rgba(4,14,8,0.95)';ctx.lineWidth=16;
+  ctx.beginPath();ctx.moveTo(nodeAx,underY);ctx.lineTo(nodeBx,underY);ctx.stroke();
+
+  // Multi-strand fibre bundle (DVN is much fatter than ISDN — many HD feeds)
+  const strands=[
+    {off:-5, col:'rgba(0,245,160,0.6)'},
+    {off:-2, col:'rgba(0,210,140,0.45)'},
+    {off: 1, col:'rgba(0,180,120,0.45)'},
+    {off: 4, col:'rgba(0,245,160,0.35)'},
+  ];
+  strands.forEach(s=>{
+    ctx.strokeStyle=s.col;ctx.lineWidth=1.8;
+    ctx.beginPath();ctx.moveTo(nodeAx,underY+s.off);ctx.lineTo(nodeBx,underY+s.off);ctx.stroke();
+  });
+
+  // Animated HD signal pulses — fast and dense (high bandwidth)
+  ctx.strokeStyle='rgba(0,245,160,0.85)';ctx.lineWidth=1.5;
+  ctx.setLineDash([8,4]);ctx.lineDashOffset=-t*45;
+  ctx.beginPath();ctx.moveTo(nodeAx,underY-3);ctx.lineTo(nodeBx,underY-3);ctx.stroke();
+  ctx.strokeStyle='rgba(0,210,140,0.6)';
+  ctx.setLineDash([6,5]);ctx.lineDashOffset=-t*35;
+  ctx.beginPath();ctx.moveTo(nodeAx,underY+3);ctx.lineTo(nodeBx,underY+3);ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Backbone label
+  ctx.textAlign='center';
+  const bbMid=(nodeAx+nodeBx)/2;
+  ctx.font='bold 0.46rem "Share Tech Mono"';ctx.fillStyle='rgba(0,245,160,0.6)';
+  ctx.fillText('TELSTRA DVN — DEDICATED BROADCAST FIBRE (UNDERGROUND)',bbMid,gy+8);
+  ctx.font='0.36rem "Share Tech Mono"';ctx.fillStyle='rgba(0,245,160,0.3)';
+  ctx.fillText('HD / 4K  ·  GIGABIT CAPACITY  ·  DUAL REDUNDANT PATHS  ·  600+ LOCATIONS  ·  NOT THE INTERNET',bbMid,underY+18);
+  ctx.restore();
+
+  // Backbone packets
+  if(Math.random()<0.07) spawnPkt(nodeAx,underY-3,nodeBx,underY-3,'#00f5a0');
+  if(Math.random()<0.05) spawnPkt(nodeBx,underY+3,nodeAx,underY+3,'#00c878');
+
+  // ── DVN NODE — YOUR CITY ──────────────────────────────────────────────────
+
+  const nodeBy=nodeAy; // same height as node A
+  drawDvnNode(nodeBx, nodeBy, 'DVN NODE\nYOUR CITY');
+  label(nodeBx, nodeBy+34,'DVN NODE','DISTRIBUTION PT','rgba(0,245,160,0.8)','rgba(0,245,160,0.3)');
+
+  // ── STUDIO MCR ────────────────────────────────────────────────────────────
+
+  const mcrX=W*0.82, mcrY=gy;
+  const mcrB=building(mcrX, mcrY, 5, 88);
+
+  // MCR label on building
+  ctx.save();
+  ctx.textAlign='center';ctx.font='bold 0.52rem "Share Tech Mono"';
+  ctx.fillStyle='rgba(0,245,160,0.7)';
+  ctx.fillText('MCR',mcrX,mcrB.topY+mcrB.bh*0.35);
+  ctx.font='0.38rem "Share Tech Mono"';ctx.fillStyle='rgba(0,245,160,0.4)';
+  ctx.fillText('MASTER CONTROL',mcrX,mcrB.topY+mcrB.bh*0.5);
+  ctx.restore();
+
+  // DVN node → MCR (last-mile fibre — goes underground then up into building)
+  ctx.save();
+  const mcrEntryX=mcrX-45, mcrEntryY=mcrY-mcrB.bh*0.5;
+  // Underground leg: node B drop → across → up into MCR
+  ctx.strokeStyle='rgba(0,245,160,0.15)';ctx.lineWidth=6;
+  ctx.beginPath();ctx.moveTo(nodeBx,underY);ctx.lineTo(mcrX,underY);ctx.lineTo(mcrX,gy);ctx.stroke();
+  ctx.strokeStyle='rgba(0,245,160,0.65)';ctx.lineWidth=1.5;ctx.setLineDash([8,5]);ctx.lineDashOffset=-t*25;
+  ctx.beginPath();ctx.moveTo(nodeBx,underY);ctx.lineTo(mcrX,underY);ctx.lineTo(mcrX,gy);ctx.stroke();
+  ctx.setLineDash([]);
+  // Above-ground entry into building
+  ctx.strokeStyle='rgba(0,245,160,0.4)';ctx.lineWidth=2;
+  ctx.beginPath();ctx.moveTo(mcrX,gy);ctx.lineTo(mcrEntryX,mcrEntryY);ctx.stroke();
+  if(Math.random()<0.06) spawnPkt(nodeBx,underY,mcrX,underY,'#00f5a0');
+  if(Math.random()<0.04) spawnPkt(mcrX,gy,mcrEntryX,mcrEntryY,'#00f5a0');
+  ctx.restore();
+  label(mcrX, mcrY+18,'STUDIO','MASTER CONTROL ROOM','rgba(0,245,160,0.88)','rgba(0,200,120,0.4)');
+
+  // ── ON AIR INDICATOR ─────────────────────────────────────────────────────
+
+  const oaX=W*0.95, oaY=mcrY-mcrB.bh*0.6;
+  const oaBlink=0.6+0.4*Math.sin(t*4);
+  ctx.save();
+  ctx.fillStyle=`rgba(255,40,40,${oaBlink*0.18})`;
+  ctx.strokeStyle=`rgba(255,40,40,${oaBlink*0.8})`;ctx.lineWidth=1.5;
+  ctx.beginPath();ctx.roundRect(oaX-28,-16+oaY,56,28,4);ctx.fill();ctx.stroke();
+  ctx.font='bold 0.5rem "Share Tech Mono"';ctx.fillStyle=`rgba(255,60,60,${oaBlink})`;
+  ctx.textAlign='center';ctx.shadowColor='#ff3030';ctx.shadowBlur=8*oaBlink;
+  ctx.fillText('ON AIR',oaX,oaY+2);ctx.shadowBlur=0;
+  ctx.restore();
+
+  // MCR → On Air arrow
+  ctx.save();
+  ctx.strokeStyle='rgba(255,60,60,0.4)';ctx.lineWidth=1.5;
+  ctx.beginPath();ctx.moveTo(mcrX+45,mcrY-mcrB.bh*0.5);ctx.lineTo(oaX-28,oaY);ctx.stroke();
+  if(Math.random()<0.05) spawnPkt(mcrX+45,mcrY-mcrB.bh*0.5,oaX-28,oaY,'#ff4040');
+  ctx.restore();
+
+  // ── DVN DEFINITION PANEL ─────────────────────────────────────────────────
+
+  ctx.save();ctx.translate(W*0.5, H*0.22);
+  ctx.fillStyle='rgba(2,11,24,0.88)';
+  ctx.strokeStyle='rgba(0,245,160,0.25)';ctx.lineWidth=1;
+  ctx.beginPath();ctx.roundRect(-180,-28,360,56,5);ctx.fill();ctx.stroke();
+  ctx.textAlign='center';
+  ctx.font='bold 0.55rem "Share Tech Mono"';ctx.fillStyle='rgba(0,245,160,0.9)';
+  ctx.fillText('DVN — TELSTRA DIGITAL VIDEO NETWORK',0,-12);
+  ctx.font='0.42rem "Share Tech Mono"';ctx.fillStyle='rgba(180,220,200,0.7)';
+  ctx.fillText('A dedicated broadcast-only fibre network connecting every major stadium,',0,3);
+  ctx.fillText('broadcaster & production hub in Australia. Not the internet — reserved for media.',0,16);
+  ctx.restore();
+
+  // Packets
+  pkts.forEach((p,i)=>{
+    if(p.p<0){p.p+=p.s;return;}
+    p.p+=p.s;if(p.p>1){pkts.splice(i,1);return;}
+    const px=p.fx+(p.tx-p.fx)*p.p,py=p.fy+(p.ty-p.fy)*p.p;
+    ctx.beginPath();ctx.arc(px,py,3,0,Math.PI*2);
+    ctx.fillStyle=p.c;ctx.shadowColor=p.c;ctx.shadowBlur=7;ctx.fill();ctx.shadowBlur=0;
+  });
+}
+
+// DVN Node box
+function drawDvnNode(cx,cy,lbl){
+  ctx.save();ctx.translate(cx,cy);
+  const g=ctx.createLinearGradient(-22,-18,22,18);
+  g.addColorStop(0,'#071f14');g.addColorStop(0.5,'#0d2e1e');g.addColorStop(1,'#071f14');
+  ctx.fillStyle=g;ctx.strokeStyle='rgba(0,245,160,0.6)';ctx.lineWidth=1.5;
+  ctx.beginPath();ctx.roundRect(-22,-18,44,36,3);ctx.fill();ctx.stroke();
+  // Telstra T logo hint
+  ctx.fillStyle='rgba(0,245,160,0.6)';
+  ctx.fillRect(-6,-12,12,3);ctx.fillRect(-2,-12,4,14);
+  // Port lights
+  [0,1,2].forEach(i=>{
+    const gl=0.5+0.5*Math.sin(t*4+i*1.5);
+    ctx.beginPath();ctx.arc(-8+i*8,12,2.2,0,Math.PI*2);
+    ctx.fillStyle=`rgba(0,245,160,${0.5+0.4*gl})`;
+    ctx.shadowColor='#00f5a0';ctx.shadowBlur=4*gl;ctx.fill();ctx.shadowBlur=0;
+  });
+  ctx.restore();
+}
+
+// ── SCENARIO 6: DAB+ DIGITAL RADIO ───────────────────────────────────────────
+
+function drawScenario6(){
+  const gy=H*0.74;
+
+  // ── DEFINITION PANEL ─────────────────────────────────────────────────────
+  ctx.save();ctx.translate(W*0.5,H*0.1);
+  ctx.fillStyle='rgba(2,11,24,0.88)';
+  ctx.strokeStyle='rgba(0,195,245,0.3)';ctx.lineWidth=1;
+  ctx.beginPath();ctx.roundRect(-195,-26,390,52,5);ctx.fill();ctx.stroke();
+  ctx.textAlign='center';
+  ctx.font='bold 0.56rem "Share Tech Mono"';ctx.fillStyle='rgba(0,195,245,0.95)';
+  ctx.fillText('DAB+ — DIGITAL AUDIO BROADCASTING',0,-10);
+  ctx.font='0.41rem "Share Tech Mono"';ctx.fillStyle='rgba(160,210,240,0.7)';
+  ctx.fillText('Multiple stations bundled into one digital transmission — the MULTIPLEX.',0,5);
+  ctx.fillText('VHF Band III (~200 MHz) · HE-AAC codec · Metro Australia only',0,17);
+  ctx.restore();
+
+  // ── STUDIOS (left — three stations contributing) ──────────────────────────
+  const stationColors=['rgba(255,80,80,0.9)','rgba(0,200,255,0.9)','rgba(80,255,160,0.9)','rgba(255,200,0,0.9)'];
+  const stationNames=['KIIS FM','TRIPLE M','NOVA','2DAY FM'];
+  const stationShort=['KIIS','MMM','NOVA','2DAY'];
+  const stuXs=[W*0.05, W*0.05, W*0.05, W*0.05];
+  const stuYs=[gy-22, gy-56, gy-90, gy-124];
+
+  stationNames.forEach((name,i)=>{
+    const sx=W*0.08, sy=stuYs[i];
+    // Mini studio block
+    ctx.save();
+    ctx.fillStyle='rgba(10,25,40,0.9)';
+    ctx.strokeStyle=stationColors[i];ctx.lineWidth=1.2;
+    ctx.beginPath();ctx.roundRect(sx-36,sy-14,72,26,3);ctx.fill();ctx.stroke();
+    ctx.font='bold 0.44rem "Share Tech Mono"';ctx.fillStyle=stationColors[i];ctx.textAlign='center';
+    ctx.fillText(stationShort[i],sx,sy+2);
+    // ON AIR blink
+    const b=Math.sin(t*3+i*1.5)>0;
+    ctx.beginPath();ctx.arc(sx+28,sy-6,3,0,Math.PI*2);
+    ctx.fillStyle=b?'rgba(255,60,60,0.9)':'rgba(80,20,20,0.5)';
+    ctx.shadowColor='#ff3030';ctx.shadowBlur=b?5:0;ctx.fill();ctx.shadowBlur=0;
+    ctx.restore();
+  });
+
+  // Station group label
+  ctx.textAlign='center';ctx.font='0.4rem "Share Tech Mono"';
+  ctx.fillStyle='rgba(150,190,220,0.5)';
+  ctx.fillText('RADIO STUDIOS',W*0.08,gy+18);
+
+  // ── CONTRIBUTION FEEDS → MUX ─────────────────────────────────────────────
+  const muxX=W*0.35, muxY=gy-72;
+
+  stationNames.forEach((name,i)=>{
+    const sx=W*0.08+36, sy=stuYs[i];
+    ctx.save();
+    ctx.strokeStyle=stationColors[i].replace('0.9','0.25');ctx.lineWidth=3;
+    ctx.beginPath();ctx.moveTo(sx,sy);ctx.lineTo(muxX-44,muxY+(i-1.5)*14);ctx.stroke();
+    ctx.strokeStyle=stationColors[i].replace('0.9','0.7');ctx.lineWidth=1.2;
+    ctx.setLineDash([6,5]);ctx.lineDashOffset=-t*18;
+    ctx.beginPath();ctx.moveTo(sx,sy);ctx.lineTo(muxX-44,muxY+(i-1.5)*14);ctx.stroke();
+    ctx.setLineDash([]);
+    if(Math.random()<0.035) spawnPkt(sx,sy,muxX-44,muxY+(i-1.5)*14,stationColors[i].replace('0.9','1'));
+    ctx.restore();
+  });
+
+  // Contribution label
+  ctx.save();ctx.translate(W*0.2,gy-72);
+  ctx.font='0.38rem "Share Tech Mono"';ctx.fillStyle='rgba(150,190,220,0.4)';ctx.textAlign='center';
+  ctx.fillText('CONTRIBUTION',0,-6);ctx.fillText('FEEDS (DVN/IP)',0,5);
+  ctx.restore();
+
+  // ── MULTIPLEXER ───────────────────────────────────────────────────────────
+  ctx.save();ctx.translate(muxX,muxY);
+  const mg=ctx.createLinearGradient(-44,-52,44,52);
+  mg.addColorStop(0,'#0d2535');mg.addColorStop(1,'#071520');
+  ctx.fillStyle=mg;ctx.strokeStyle='rgba(0,195,245,0.6)';ctx.lineWidth=1.5;
+  ctx.beginPath();ctx.roundRect(-44,-52,88,104,5);ctx.fill();ctx.stroke();
+  // Title
+  ctx.font='bold 0.52rem "Share Tech Mono"';ctx.fillStyle='rgba(0,195,245,0.9)';ctx.textAlign='center';
+  ctx.fillText('MULTI',0,-28);ctx.fillText('PLEXER',0,-16);
+  // Incoming colour stripes funnelling in
+  stationColors.forEach((c,i)=>{
+    const stripY=-38+i*16;
+    ctx.fillStyle=c.replace('0.9','0.25');
+    ctx.fillRect(-42,stripY,30,12);
+    ctx.font='0.35rem "Share Tech Mono"';ctx.fillStyle=c;ctx.textAlign='left';
+    ctx.fillText(stationShort[i],-38,stripY+9);
+  });
+  // Arrow funnel
+  ctx.strokeStyle='rgba(0,195,245,0.4)';ctx.lineWidth=1;
+  ctx.beginPath();ctx.moveTo(-10,-40);ctx.lineTo(16,0);ctx.lineTo(-10,40);ctx.stroke();
+  // Output label
+  ctx.font='0.38rem "Share Tech Mono"';ctx.fillStyle='rgba(0,195,245,0.6)';ctx.textAlign='center';
+  ctx.fillText('MUX OUT',0,28);ctx.fillText('1×STREAM',0,39);
+  // LEDs
+  [0,1,2].forEach(i=>{
+    const gl=0.5+0.5*Math.sin(t*4+i*1.1);
+    ctx.beginPath();ctx.arc(-18+i*18,46,3,0,Math.PI*2);
+    ctx.fillStyle=`rgba(0,245,160,${0.6+0.3*gl})`;ctx.shadowColor='#00f5a0';ctx.shadowBlur=4*gl;ctx.fill();ctx.shadowBlur=0;
+  });
+  ctx.restore();
+  label(muxX,gy+18,'MULTIPLEXER','BUNDLES ALL STATIONS','rgba(0,195,245,0.85)','rgba(0,180,245,0.35)');
+
+  // ── MUX → ENCODER ─────────────────────────────────────────────────────────
+  const encX=W*0.52, encY=gy-72;
+  ctx.save();
+  ctx.strokeStyle='rgba(0,195,245,0.2)';ctx.lineWidth=6;
+  ctx.beginPath();ctx.moveTo(muxX+44,muxY);ctx.lineTo(encX-36,encY);ctx.stroke();
+  ctx.strokeStyle='rgba(0,195,245,0.8)';ctx.lineWidth=1.8;ctx.setLineDash([8,5]);ctx.lineDashOffset=-t*28;
+  ctx.beginPath();ctx.moveTo(muxX+44,muxY);ctx.lineTo(encX-36,encY);ctx.stroke();
+  ctx.setLineDash([]);
+  if(Math.random()<0.06) spawnPkt(muxX+44,muxY,encX-36,encY,'#00c3f5');
+  ctx.restore();
+
+  // ── DAB+ ENCODER / EXCITER ────────────────────────────────────────────────
+  ctx.save();ctx.translate(encX,encY);
+  const eg=ctx.createLinearGradient(-36,-40,36,40);
+  eg.addColorStop(0,'#1a2010');eg.addColorStop(1,'#0d1408');
+  ctx.fillStyle=eg;ctx.strokeStyle='rgba(80,255,160,0.55)';ctx.lineWidth=1.5;
+  ctx.beginPath();ctx.roundRect(-36,-40,72,80,4);ctx.fill();ctx.stroke();
+  ctx.font='bold 0.48rem "Share Tech Mono"';ctx.fillStyle='rgba(80,255,160,0.9)';ctx.textAlign='center';
+  ctx.fillText('DAB+',0,-20);ctx.fillText('ENCODER',0,-9);
+  ctx.font='0.38rem "Share Tech Mono"';ctx.fillStyle='rgba(80,255,160,0.5)';
+  ctx.fillText('HE-AAC',0,4);ctx.fillText('~200 MHz',0,14);
+  // Spectrum display (little animated bars)
+  for(let b=0;b<8;b++){
+    const bh=6+6*Math.abs(Math.sin(t*5+b*0.8));
+    ctx.fillStyle=`rgba(80,255,160,${0.4+0.3*Math.sin(t*3+b)})`;
+    ctx.fillRect(-28+b*8,28-bh,6,bh);
+  }
+  ctx.restore();
+  label(encX,gy+18,'DAB+ ENCODER','HE-AAC CODEC','rgba(80,255,160,0.85)','rgba(60,200,120,0.35)');
+
+  // ── ENCODER → STL → TRANSMITTER MAST ─────────────────────────────────────
+  const mastX=W*0.72, mastBaseY=gy;
+  ctx.save();
+  ctx.strokeStyle='rgba(80,255,160,0.2)';ctx.lineWidth=4;
+  ctx.beginPath();ctx.moveTo(encX+36,encY);ctx.lineTo(mastX-8,mastBaseY-50);ctx.stroke();
+  ctx.strokeStyle='rgba(80,255,160,0.65)';ctx.lineWidth=1.5;ctx.setLineDash([8,5]);ctx.lineDashOffset=-t*22;
+  ctx.beginPath();ctx.moveTo(encX+36,encY);ctx.lineTo(mastX-8,mastBaseY-50);ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.font='0.38rem "Share Tech Mono"';ctx.fillStyle='rgba(80,255,160,0.35)';ctx.textAlign='center';
+  ctx.fillText('STL LINK',W*0.625,gy-80);
+  if(Math.random()<0.05) spawnPkt(encX+36,encY,mastX-8,mastBaseY-50,'#50ffa0');
+  ctx.restore();
+
+  // Transmitter mast on hill
+  hillMast(mastX, mastBaseY);
+
+  // VHF waves (wider spread than FM, same visual style)
+  ctx.save();
+  for(let r=1;r<=4;r++){
+    const rad=r*28, waveFade=0.5-r*0.1, waveT=(t*1.2+r*0.4)%1;
+    ctx.strokeStyle=`rgba(80,255,160,${waveFade*(1-waveT*0.5)})`;
+    ctx.lineWidth=1.5-r*0.2;
+    ctx.beginPath();
+    ctx.arc(mastX,mastBaseY-95-74,rad*1.2,Math.PI*1.1,Math.PI*1.9);ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(mastX,mastBaseY-95-74,rad*1.2,Math.PI*1.1+Math.PI,Math.PI*1.9+Math.PI);ctx.stroke();
+  }
+  ctx.restore();
+  label(mastX,gy+18,'VHF TRANSMITTER','DAB+ BAND III','rgba(80,255,160,0.85)','rgba(60,200,120,0.35)');
+
+  // ── DAB+ RADIO RECEIVER ───────────────────────────────────────────────────
+  const carX=W*0.9, carY=gy;
+  carWithPerson(carX, carY);
+
+  // Radio display above car showing station list
+  ctx.save();ctx.translate(carX-10,carY-68);
+  ctx.fillStyle='rgba(5,15,25,0.92)';
+  ctx.strokeStyle='rgba(0,195,245,0.4)';ctx.lineWidth=1;
+  ctx.beginPath();ctx.roundRect(-46,-46,92,46,3);ctx.fill();ctx.stroke();
+  // Screen header
+  ctx.fillStyle='rgba(0,195,245,0.8)';ctx.font='bold 0.38rem "Share Tech Mono"';ctx.textAlign='center';
+  ctx.fillText('DAB+ STATIONS',0,-32);
+  // Station list on display
+  stationShort.forEach((s,i)=>{
+    const active=i===Math.floor((t*0.3)%stationShort.length);
+    ctx.fillStyle=active?stationColors[i]:'rgba(150,180,200,0.4)';
+    ctx.font=(active?'bold ':'')+'0.36rem "Share Tech Mono"';
+    ctx.textAlign='left';
+    ctx.fillText((active?'▶ ':' ')+s,-38,-18+i*12);
+  });
+  ctx.restore();
+  label(carX,gy+18,'DAB+ RECEIVER','DIGITAL RADIO','rgba(0,195,245,0.85)','rgba(0,180,245,0.35)');
+
+  // Signal path: mast → car
+  ctx.save();
+  const sigFade=0.18+0.08*Math.sin(t*1.8);
+  ctx.strokeStyle=`rgba(80,255,160,${sigFade})`;ctx.lineWidth=1.5;
+  ctx.beginPath();ctx.moveTo(mastX+10,mastBaseY-95-60);ctx.lineTo(carX-30,carY-40);ctx.stroke();
+  if(Math.random()<0.04) spawnPkt(mastX+10,mastBaseY-95-60,carX-30,carY-40,'#50ffa0');
+  ctx.restore();
+}
+
+// ── FLOW BAR ─────────────────────────────────────────────────────────────────
+
+function updateFlowBar(){
+  const fb=document.getElementById('flow-bar');
+  if(scenario===1){
+    fb.innerHTML=`
+      <div class="fs"><div class="fd g"></div>STUDIO</div>
+      <div class="fa">──▶</div>
+      <div class="fs"><div class="fd g"></div>STL LINK</div>
+      <div class="fa">──▶</div>
+      <div class="fs"><div class="fd g"></div>TX MAST (HILL)</div>
+      <div class="fa">──▶</div>
+      <div class="fs"><div class="fd g"></div>FM / AM LISTENERS</div>`;
+  } else if(scenario===2) {
+    fb.innerHTML=`
+      <div class="fs"><div class="fd g"></div>NETWORK HQ</div>
+      <div class="fa">──▶</div>
+      <div class="fs"><div class="fd y"></div>UPLINK FACILITY</div>
+      <div class="fa">──▶</div>
+      <div class="fs"><div class="fd b"></div>SATELLITE</div>
+      <div class="fa">──▶</div>
+      <div class="fs"><div class="fd b"></div>LOCAL STATION</div>
+      <div class="fa">──▶</div>
+      <div class="fs"><div class="fd g"></div>STL → TX MAST</div>
+      <div class="fa">──▶</div>
+      <div class="fs"><div class="fd g"></div>FM LISTENERS</div>`;
+  } else if(scenario===3) {
+    fb.innerHTML=`
+      <div class="fs"><div class="fd y"></div>SIDELINE REPORTER</div>
+      <div class="fa">──▶</div>
+      <div class="fs"><div class="fd g"></div>TIELINE CODEC</div>
+      <div class="fa">──▶</div>
+      <div class="fs"><div class="fd b"></div>PORTABLE ROUTER</div>
+      <div class="fa">──▶</div>
+      <div class="fs"><div class="fd b"></div>4G CELL TOWER</div>
+      <div class="fa">──▶</div>
+      <div class="fs"><div class="fd b"></div>INTERNET</div>
+      <div class="fa">──▶</div>
+      <div class="fs"><div class="fd g"></div>RADIO STUDIO</div>
+      <div class="fa">──▶</div>
+      <div class="fs"><div class="fd g"></div>ON AIR</div>`;
+  } else if(scenario===4) {
+    fb.innerHTML=`
+      <div class="fs"><div class="fd g"></div>STUDIO A (QLD)</div>
+      <div class="fa">──▶</div>
+      <div class="fs"><div class="fd y"></div>ISDN CODEC</div>
+      <div class="fa">──▶</div>
+      <div class="fs"><div class="fd y"></div>LOCAL EXCHANGE</div>
+      <div class="fa">──▶</div>
+      <div class="fs"><div class="fd y"></div>ISDN BACKBONE</div>
+      <div class="fa">──▶</div>
+      <div class="fs"><div class="fd y"></div>REMOTE EXCHANGE</div>
+      <div class="fa">──▶</div>
+      <div class="fs"><div class="fd y"></div>ISDN CODEC</div>
+      <div class="fa">──▶</div>
+      <div class="fs"><div class="fd b"></div>STUDIO B (NSW)</div>`;
+  } else if(scenario===5) {
+    fb.innerHTML=`
+      <div class="fs"><div class="fd y"></div>NRL STADIUM</div>
+      <div class="fa">──▶</div>
+      <div class="fs"><div class="fd b"></div>CAMERA / OB VAN</div>
+      <div class="fa">──▶</div>
+      <div class="fs"><div class="fd b"></div>DVN FIBRE NODE</div>
+      <div class="fa">──▶</div>
+      <div class="fs"><div class="fd b"></div>TELSTRA DVN BACKBONE</div>
+      <div class="fa">──▶</div>
+      <div class="fs"><div class="fd b"></div>DVN NODE (YOUR CITY)</div>
+      <div class="fa">──▶</div>
+      <div class="fs"><div class="fd g"></div>STUDIO MCR</div>
+      <div class="fa">──▶</div>
+      <div class="fs"><div class="fd g"></div>ON AIR</div>`;
+  } else if(scenario===6) {
+    fb.innerHTML=`
+      <div class="fs"><div class="fd g"></div>RADIO STUDIOS ×N</div>
+      <div class="fa">──▶</div>
+      <div class="fs"><div class="fd b"></div>CONTRIBUTION FEEDS</div>
+      <div class="fa">──▶</div>
+      <div class="fs"><div class="fd y"></div>MULTIPLEXER</div>
+      <div class="fa">──▶</div>
+      <div class="fs"><div class="fd y"></div>DAB+ ENCODER</div>
+      <div class="fa">──▶</div>
+      <div class="fs"><div class="fd g"></div>VHF TRANSMITTER</div>
+      <div class="fa">──▶</div>
+      <div class="fs"><div class="fd g"></div>DAB+ RADIO</div>`;
+  }
+}
+
+const titles={
+  1:'SCENARIO 1 — LOCAL PLAYOUT',
+  2:'SCENARIO 2 — NETWORKED STATION',
+  3:'SCENARIO 3 — TIELINE CODEC (NRL SIDELINE)',
+  4:'SCENARIO 4 — ISDN STUDIO TO STUDIO',
+  5:'SCENARIO 5 — DVN LIVE GAME VISION',
+  6:'SCENARIO 6 — DAB+ DIGITAL RADIO'
+};
+
+function setScenario(n){
+  if(n===scenario||transitioning)return;
+  transitioning=true;
+  const fade=document.getElementById('fade');
+  fade.classList.add('on');
+  setTimeout(()=>{
+    scenario=n;
+    clearPkts();
+    document.getElementById('btn1').classList.toggle('active',n===1);
+    document.getElementById('btn2').classList.toggle('active',n===2);
+    document.getElementById('btn3').classList.toggle('active',n===3);
+    document.getElementById('btn4').classList.toggle('active',n===4);
+    document.getElementById('btn5').classList.toggle('active',n===5);
+    document.getElementById('btn6').classList.toggle('active',n===6);
+    document.getElementById('scenario-title').textContent=titles[n];
+    updateFlowBar();
+    fade.classList.remove('on');
+    transitioning=false;
+  },260);
+}
+
+updateFlowBar();
+document.getElementById('scenario-title').textContent=titles[1];
+
+// ── CLICK / POPUP SYSTEM ─────────────────────────────────────────────────────
+
+const descriptions = {
+  // Scenario 1
+  s1_studio: {
+    title: 'RADIO STUDIO',
+    body: 'Where presenters, DJs and producers create the broadcast. Contains mixing desks, microphones, playout software and audio processing equipment. The finished audio is sent via the STL to the transmitter site.'
+  },
+  s1_stl: {
+    title: 'STL — STUDIO TRANSMITTER LINK',
+    body: 'A dedicated link (usually fibre optic or a short-hop microwave radio) that carries the programme audio from the studio to the transmitter mast. It\'s separate from the internet — quality and reliability are critical.'
+  },
+  s1_mast: {
+    title: 'TRANSMITTER MAST',
+    body: 'Usually sited on high ground to maximise coverage. A powerful FM or AM transmitter converts the audio signal into radio waves and radiates them from the antenna at the top of the mast. Coverage can span 50–100 km.'
+  },
+  s1_listener: {
+    title: 'THE LISTENER',
+    body: 'The car radio\'s antenna picks up the FM radio waves broadcast from the mast. The tuner locks onto the station\'s frequency, demodulates the signal, and plays it through the speakers.'
+  },
+  // Scenario 2
+  s2_hq: {
+    title: 'NETWORK HQ',
+    body: 'The national broadcaster\'s central hub where the main programme is produced. News, music and shows originate here and are distributed to hundreds of local stations across the network.'
+  },
+  s2_contriblink: {
+    title: 'CONTRIBUTION LINK',
+    body: 'A high-quality dedicated connection — usually fibre — that carries the programme feed from Network HQ to the uplink facility. Audio quality must be maintained end-to-end, so this is not a standard internet connection.'
+  },
+  s2_uplink: {
+    title: 'UPLINK FACILITY',
+    body: 'A specialist transmission site with large parabolic dishes (typically 3–9 metres across). The audio is encoded, encrypted and modulated onto a carrier signal, then beamed up to the satellite at Ku-band frequencies (~14 GHz).'
+  },
+  s2_satellite: {
+    title: 'GEOSTATIONARY SATELLITE',
+    body: 'Orbiting at 35,786 km, it rotates at the same speed as Earth so it appears stationary in the sky. It receives the uplink signal, shifts it to a different frequency, and retransmits it back down across a wide footprint — covering entire countries.'
+  },
+  s2_localstation: {
+    title: 'LOCAL STATION',
+    body: 'Receives the satellite downlink via its own dish. It can insert local content — traffic, weather, ads — before feeding the combined signal via its own STL to the local transmitter mast. This is why local stations can have local ads on a national network.'
+  },
+  s2_mast: {
+    title: 'LOCAL TRANSMITTER MAST',
+    body: 'The local station\'s own FM transmitter on high ground. It broadcasts over the local area — typically a city or region. The listener has no idea the signal originated from a satellite; to them it\'s just local FM radio.'
+  },
+  s2_listener: {
+    title: 'THE LISTENER',
+    body: 'The car radio picks up the FM signal from the local transmitter mast — exactly the same experience as Scenario 1. The satellite relay happens invisibly in the chain. The signal delay from HQ to listener is typically under one second.'
+  },
+  // Scenario 3
+  s3_stadium: {
+    title: 'NRL STADIUM',
+    body: 'The match venue. Sideline reporters and commentary teams are positioned on the boundary to provide live cross reports, interviews and commentary back to the studio during the broadcast.'
+  },
+  s3_reporter: {
+    title: 'SIDELINE REPORTER',
+    body: 'Wears a headset connected to the Tieline codec. They can hear the studio presenter in one ear and speak live to air. Their microphone audio is fed directly into the codec for encoding and transmission.'
+  },
+  s3_codec: {
+    title: 'TIELINE MERLIN CODEC',
+    body: 'A ruggedised field audio codec made by Tieline Technology (an Australian company). It encodes broadcast-quality audio using AAC or similar, then sends it over IP to the portable router on your private network. The studio has a matching codec to decode the incoming stream.'
+  },
+  s3_router: {
+    title: 'PORTABLE ROUTER (YOUR NETWORK)',
+    body: 'A portable 4G router (e.g. Peplink or Cradlepoint) brought to the venue by the broadcast team. It creates a private, managed network at the ground. The Tieline codec connects to this router via WiFi or ethernet. The router then connects wirelessly to the nearest 4G cell tower, which is the physical gateway onto the carrier\'s network and the internet beyond.'
+  },
+  s3_network: {
+    title: 'PRIORITY 4G NETWORK',
+    body: 'Your SIM is provisioned on a carrier priority tier — in Australia, Telstra\'s Critical and Public Safety network sits above general consumers. The priority order is roughly: Emergency Services (Police, Ambulance, Fire) → Critical Infrastructure & Broadcast → General Public. At a packed NRL ground where tens of thousands of fans are all hitting the same cell tower, general users get throttled or dropped — your stream stays up because the network reserves bandwidth for your priority tier first.'
+  },
+  s3_studio: {
+    title: 'RADIO STUDIO',
+    body: 'The studio has its own Tieline codec (or server) which decodes the incoming feed from the field unit. The audio appears on the studio mixing desk just like any other audio source, and the presenter can cross live to the sideline reporter at any time.'
+  },
+  // Scenario 4
+  s4_studioA: {
+    title: 'STUDIO A — QUEENSLAND',
+    body: 'The originating studio initiating the cross. The presenter dials out via the ISDN codec using a standard ISDN number — much like a phone call. Once connected, both studios can hear each other in real time through their mixing desks.'
+  },
+  s4_codecA: {
+    title: 'ISDN CODEC (STUDIO A)',
+    body: 'An ISDN audio codec (brands include Telos, APT, Musicam) connects to the ISDN line and encodes audio at up to 128 kbps using G.722 or MPEG Layer II. It dials the remote codec like a telephone call. The codec plugs into the studio mixing desk as a standard audio input/output.'
+  },
+  s4_exchangeA: {
+    title: 'LOCAL TELEPHONE EXCHANGE',
+    body: 'The local telco exchange that the ISDN line terminates into. ISDN uses the existing copper telephone network infrastructure. The exchange routes the call onto the long-distance ISDN backbone toward the destination state.'
+  },
+  s4_backbone: {
+    title: 'ISDN BACKBONE',
+    body: 'A dedicated digital circuit running between telephone exchanges across state lines. Unlike the internet, ISDN provides a circuit-switched connection — the full bandwidth is reserved exclusively for your call for its duration. This guarantees consistent audio quality with predictable latency, which is why broadcasters preferred it. Each ISDN "B channel" carries 64 kbps; two bonded channels give 128 kbps.'
+  },
+  s4_exchangeB: {
+    title: 'REMOTE TELEPHONE EXCHANGE',
+    body: 'The destination state\'s telephone exchange receives the ISDN circuit and routes it the final leg to the studio. The call arrives like any other ISDN call — the codec at Studio B answers it automatically.'
+  },
+  s4_codecB: {
+    title: 'ISDN CODEC (STUDIO B)',
+    body: 'The receiving codec at Studio B answers the incoming ISDN call and decodes the audio stream. Both codecs must use matching algorithms (e.g. both using G.722 or both using MPEG Layer II) to communicate. The decoded audio feeds directly into Studio B\'s mixing desk.'
+  },
+  s4_studioB: {
+    title: 'STUDIO B — NEW SOUTH WALES',
+    body: 'The receiving studio. Audio from Studio A arrives on the mixing desk as a clean, broadcast-quality feed. The presenter can talk back to Studio A in full duplex — both directions simultaneously. This is how interstate live crosses and network sharing worked for decades before IP codecs.'
+  },
+  // Scenario 5
+  s5_stadium: {
+    title: 'NRL STADIUM',
+    body: 'The match venue. Multiple broadcast cameras are positioned around the ground — main angles, sideline, spidercam, in-goal. All camera feeds are routed to the Outside Broadcast van parked at the venue.'
+  },
+  s5_cameras: {
+    title: 'CAMERAS & VISION SOURCES',
+    body: 'A full broadcast camera rig at an NRL match typically includes 15–25 cameras. Each captures uncompressed HD or 4K video. All feeds are cabled back to the OB van via thick multi-core broadcast cables running around the ground.'
+  },
+  s5_ob: {
+    title: 'OUTSIDE BROADCAST VAN (OB VAN)',
+    body: 'A self-contained mobile production studio parked at the venue. Inside are vision mixers, replay servers, audio consoles and graphics systems. The director cuts between cameras here to produce the programme feed. The finished vision is then encoded and sent out via DVN fibre.'
+  },
+  s5_dvnNode: {
+    title: 'DVN FIBRE NODE — STADIUM',
+    body: 'Telstra\'s DVN fibre network physically terminates at the stadium — most major NRL grounds are permanently connected nodes on the DVN. The OB van plugs directly into this fibre connection. No satellite, no 4G — dedicated broadcast-grade fibre from the ground.'
+  },
+  s5_backbone: {
+    title: 'TELSTRA DVN BACKBONE',
+    body: 'Telstra\'s Digital Video Network is a dedicated high-capacity fibre network purpose-built for broadcast. Unlike the public internet, it is reserved exclusively for media — broadcasters, stadiums and production hubs. It carries HD and 4K video with guaranteed bandwidth, low latency and dual-path redundancy so a fibre cut doesn\'t drop the feed. Deployed across 600+ locations nationally.'
+  },
+  s5_dvnLocal: {
+    title: 'DVN NODE — YOUR CITY',
+    body: 'The DVN fibre arrives at a Telstra point of presence in your city. From here the signal is distributed to any broadcaster connected to the DVN in that market. Your studio receives it as a permanent always-on feed — no dialling, no booking required for scheduled fixtures.'
+  },
+  s5_mcr: {
+    title: 'MASTER CONTROL ROOM (MCR)',
+    body: 'Your studio\'s MCR receives the DVN feed as a live video input — it appears on the router just like any other source. The MCR operator can switch it to air, record it, or route it to a playout channel. Multiple DVN feeds from different games can arrive simultaneously and be managed independently.'
+  },
+  s5_onair: {
+    title: 'ON AIR',
+    body: 'The live game vision goes to air. The DVN path from stadium camera to your transmitter typically adds only a few hundred milliseconds of latency — fast enough that it\'s imperceptible to viewers. This is why DVN is used for live sport rather than satellite or internet streaming.'
+  },
+  // Scenario 6
+  s6_studios: {
+    title: 'RADIO STUDIOS',
+    body: 'Multiple commercial radio stations each produce their own audio independently — presenters, music, ads, news. Each station sends a continuous audio feed via a contribution link (DVN fibre or managed IP) to the multiplexer facility. The stations have no knowledge of each other at this point — they just feed their audio.'
+  },
+  s6_feeds: {
+    title: 'CONTRIBUTION FEEDS',
+    body: 'Each station\'s audio is sent as a digital audio stream to the multiplexer, typically over Telstra\'s DVN or a dedicated managed IP circuit. The feed must be continuous and reliable — any dropout means dead air on that DAB station.'
+  },
+  s6_mux: {
+    title: 'MULTIPLEXER (MUX)',
+    body: 'The heart of DAB+. The multiplexer takes all the individual station audio feeds and encodes them together into a single combined digital data stream — the multiplex or "mux". In Australia, a typical metro mux carries 8–12 stations. The mux also carries metadata like station names, song titles and logos. Think of it like a post sorting office bundling multiple letters into one truck.'
+  },
+  s6_encoder: {
+    title: 'DAB+ ENCODER / EXCITER',
+    body: 'Encodes the multiplexed stream using the HE-AAC (High Efficiency AAC) audio codec and applies OFDM (Orthogonal Frequency Division Multiplexing) modulation — the transmission technique that makes DAB+ resilient to reflections and interference. The encoded signal is sent via an STL link to the transmitter mast.'
+  },
+  s6_mast: {
+    title: 'VHF TRANSMITTER MAST',
+    body: 'DAB+ transmits on VHF Band III — around 174–240 MHz in Australia, completely different from FM (87–108 MHz). The transmitter broadcasts the entire multiplex from one antenna — all 10+ stations simultaneously on one frequency. Coverage is typically metro-only in Australia; regional areas are still largely FM/AM.'
+  },
+  s6_radio: {
+    title: 'DAB+ RADIO RECEIVER',
+    body: 'Your DAB+ radio receives the full multiplex and decodes it. It displays a station list rather than frequencies — you never tune to a number, you just pick a name. The receiver decodes HE-AAC audio for whichever station you select. Because it\'s digital, you get perfect audio or nothing — no static or hiss. The receiver also shows text data: song title, artist, station logo and programme info sent alongside the audio.'
+  }
+};
+
+// Hitboxes registered each frame
+let hitboxes = [];
+
+function registerHitbox(id, x, y, w, h) {
+  hitboxes.push({id, x, y, w, h});
+}
+
+let activeHover = null;
+
+// Popup state
+let popupId = null;
+function showPopup(id, mx, my) {
+  const info = descriptions[id];
+  if(!info) return;
+  popupId = id;
+  document.getElementById('popup-title').textContent = info.title;
+  document.getElementById('popup-body').textContent = info.body;
+  const popup = document.getElementById('popup');
+  popup.classList.add('visible');
+  positionPopup(mx, my);
+}
+function positionPopup(mx, my) {
+  const popup = document.getElementById('popup');
+  const pw = 260, ph = 120;
+  let left = mx + 14;
+  let top = my - 20;
+  if(left + pw > W - 10) left = mx - pw - 14;
+  if(top + ph > window.innerHeight - 60) top = window.innerHeight - 60 - ph;
+  if(top < 90) top = 90;
+  popup.style.left = left + 'px';
+  popup.style.top = top + 'px';
+}
+function closePopup() {
+  document.getElementById('popup').classList.remove('visible');
+  popupId = null;
+}
+
+// Draw a subtle hover highlight
+function drawHitboxHighlight(hb) {
+  ctx.save();
+  ctx.strokeStyle = 'rgba(0,245,160,0.55)';
+  ctx.lineWidth = 1.5;
+  ctx.setLineDash([4,3]);
+  ctx.strokeRect(hb.x, hb.y, hb.w, hb.h);
+  ctx.setLineDash([]);
+  ctx.fillStyle = 'rgba(0,245,160,0.06)';
+  ctx.fillRect(hb.x, hb.y, hb.w, hb.h);
+  ctx.restore();
+}
+
+// Canvas click
+canvas.addEventListener('click', e => {
+  const rect = canvas.getBoundingClientRect();
+  const scaleX = W / rect.width;
+  const scaleY = H / rect.height;
+  const mx = (e.clientX - rect.left) * scaleX;
+  const my = (e.clientY - rect.top) * scaleY;
+  for(const hb of hitboxes) {
+    if(mx>=hb.x && mx<=hb.x+hb.w && my>=hb.y && my<=hb.y+hb.h) {
+      showPopup(hb.id, e.clientX, e.clientY);
+      return;
+    }
+  }
+  closePopup();
+});
+
+canvas.addEventListener('mousemove', e => {
+  const rect = canvas.getBoundingClientRect();
+  const scaleX = W / rect.width;
+  const scaleY = H / rect.height;
+  const mx = (e.clientX - rect.left) * scaleX;
+  const my = (e.clientY - rect.top) * scaleY;
+  let found = null;
+  for(const hb of hitboxes) {
+    if(mx>=hb.x && mx<=hb.x+hb.w && my>=hb.y && my<=hb.y+hb.h) { found=hb; break; }
+  }
+  activeHover = found ? found.id : null;
+  canvas.style.cursor = found ? 'pointer' : 'default';
+});
+
+// Main draw loop
+function draw() {
+  hitboxes = [];
+  ctx.clearRect(0,0,W,H);
+  const gy=H*0.74, satX=W*0.5, satY=H*0.13;
+
+  if(scenario===4){
+    drawBackground4();
+  } else if(scenario===5){
+    drawBackground5();
+  } else {
+    sky(); drawStars();
+    moon(W*0.9, H*0.09, 18);
+    gnd();
+  }
+
+  if(scenario===1) {
+    drawScenario1();
+    const stuX=W*0.15;
+    registerHitbox('s1_studio', stuX-55, H*0.74-5*17-10, 110, 5*17+10);
+    const mastX=W*0.58;
+    registerHitbox('s1_mast', mastX-55, H*0.74-74-95, 110, 170);
+    registerHitbox('s1_stl', stuX+44, H*0.74-38, mastX-stuX-70, 30);
+    const cX=W*0.84;
+    registerHitbox('s1_listener', cX-38, H*0.74-36, 76, 50);
+  } else if(scenario===2) {
+    drawScenario2();
+    const hqX=W*0.08;
+    registerHitbox('s2_hq', hqX-55, H*0.74-7*17-10, 110, 7*17+10);
+    const upX=W*0.3;
+    registerHitbox('s2_uplink', upX-90, H*0.74-4*17-10, 180, 4*17+10);
+    registerHitbox('s2_contriblink', hqX+44, H*0.74-40, upX-hqX-130, 30);
+    registerHitbox('s2_satellite', satX-70, satY-30, 140, 80);
+    const locX=W*0.72;
+    registerHitbox('s2_localstation', locX-65, H*0.74-5*17-10, 130, 5*17+10);
+    const mastX=W*0.89;
+    registerHitbox('s2_mast', mastX-55, H*0.74-75-95, 110, 170);
+    registerHitbox('s2_listener', W*0.96-38, H*0.74-36, 76, 50);
+  } else if(scenario===3) {
+    drawScenario3();
+    const stadX=W*0.26;
+    registerHitbox('s3_stadium', stadX-135, H*0.74-92, 270, 92);
+    registerHitbox('s3_reporter', stadX+80, H*0.74-60, 50, 55);
+    const codecX=stadX+145;
+    registerHitbox('s3_codec', codecX-38, H*0.74-72, 76, 55);
+    const routerX=stadX+220;
+    registerHitbox('s3_router', routerX-32, H*0.74-68, 64, 55);
+    registerHitbox('s3_network', W*0.62-55, H*0.35-32, 110, 62);
+    const stuX=W*0.87;
+    registerHitbox('s3_studio', stuX-55, H*0.74-6*17-10, 110, 6*17+10);
+  } else if(scenario===4) {
+    drawScenario4();
+    const aX=W*0.13;
+    registerHitbox('s4_studioA', aX-55, H*0.74-6*17-10, 110, 6*17+10);
+    registerHitbox('s4_codecA', aX+10, H*0.74-6*17-48, 56, 32);
+    const exAx=W*0.31;
+    registerHitbox('s4_exchangeA', exAx-32, H*0.74-58, 64, 58);
+    registerHitbox('s4_backbone', W*0.31+64, H*0.74-30, W*0.38-64, 26);
+    const exBx=W-W*0.31;
+    registerHitbox('s4_exchangeB', exBx-32, H*0.74-58, 64, 58);
+    const bX=W*0.87;
+    registerHitbox('s4_codecB', bX-66, H*0.74-6*17-48, 56, 32);
+    registerHitbox('s4_studioB', bX-55, H*0.74-6*17-10, 110, 6*17+10);
+  } else if(scenario===5) {
+    drawScenario5();
+    const stadX=W*0.17;
+    registerHitbox('s5_stadium', stadX-65, H*0.74-86, 130, 86);
+    registerHitbox('s5_cameras', stadX+54, H*0.74-52, 28, 28);
+    const obX=W*0.32;
+    registerHitbox('s5_ob', obX-52, H*0.74-66, 104, 56);
+    const nodeAx=W*0.46;
+    registerHitbox('s5_dvnNode', nodeAx-22, H*0.74-70, 44, 36);
+    registerHitbox('s5_backbone', nodeAx+22, H*0.74-60, W*0.16-44, 20);
+    const nodeBx=W*0.62;
+    registerHitbox('s5_dvnLocal', nodeBx-22, H*0.74-70, 44, 36);
+    const mcrX=W*0.82;
+    registerHitbox('s5_mcr', mcrX-45, H*0.74-5*17-10, 90, 5*17+10);
+    registerHitbox('s5_onair', W*0.95-28, H*0.74-5*17-30, 56, 28);
+  } else {
+    drawScenario6();
+    registerHitbox('s6_studios', W*0.08-55, H*0.74-138, 110, 138);
+    registerHitbox('s6_feeds', W*0.08+36, H*0.74-100, W*0.35*0.6, 80);
+    const muxX=W*0.35;
+    registerHitbox('s6_mux', muxX-44, H*0.74-124, 88, 104);
+    const encX=W*0.52;
+    registerHitbox('s6_encoder', encX-36, H*0.74-112, 72, 80);
+    registerHitbox('s6_mast', W*0.72-55, H*0.74-95-74-30, 110, 200);
+    registerHitbox('s6_radio', W*0.9-38, H*0.74-36, 76, 50);
+  }
+
+  // Draw hover highlight
+  if(activeHover) {
+    const hb = hitboxes.find(h=>h.id===activeHover);
+    if(hb) drawHitboxHighlight(hb);
+  }
+
+  t+=0.016;
+  requestAnimationFrame(draw);
+}
+
+draw();
+</script>
+</body>
+</html>
