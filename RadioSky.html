@@ -7,7 +7,8 @@
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Share+Tech+Mono&display=swap');
   * { margin:0; padding:0; box-sizing:border-box; }
-  body { background:#020b18; font-family:'Share Tech Mono',monospace; overflow:hidden; height:100vh; width:100vw; }
+  html { height:100%; }
+  body { background:#020b18; font-family:'Share Tech Mono',monospace,monospace; overflow:hidden; height:100vh; width:100vw; }
   canvas { display:block; width:100%; height:100%; }
 
   /* Toggle */
@@ -126,9 +127,28 @@
   <div id="scenario-title" class="show"></div>
 </div>
 
-<div id="flow-bar" id="flow-bar"></div>
+<div id="flow-bar"></div>
 
 <script>
+// ── POLYFILL: ctx.roundRect (not supported in older browsers) ─────────────────
+if(!CanvasRenderingContext2D.prototype.roundRect){
+  CanvasRenderingContext2D.prototype.roundRect=function(x,y,w,h,r){
+    if(typeof r==='object') r=r[0]||0;
+    r=Math.min(r,w/2,h/2);
+    this.moveTo(x+r,y);
+    this.lineTo(x+w-r,y);
+    this.quadraticCurveTo(x+w,y,x+w,y+r);
+    this.lineTo(x+w,y+h-r);
+    this.quadraticCurveTo(x+w,y+h,x+w-r,y+h);
+    this.lineTo(x+r,y+h);
+    this.quadraticCurveTo(x,y+h,x,y+h-r);
+    this.lineTo(x,y+r);
+    this.quadraticCurveTo(x,y,x+r,y);
+    this.closePath();
+    return this;
+  };
+}
+
 const canvas=document.getElementById('scene');
 const ctx=canvas.getContext('2d');
 let W,H;
@@ -1703,7 +1723,7 @@ function drawScenario6(){
   ctx.restore();
 
   // Transmitter mast on hill
-  hillMast(mastX, mastBaseY, 95);
+  hillMast(mastX, mastBaseY);
 
   // VHF waves (wider spread than FM, same visual style)
   ctx.save();
